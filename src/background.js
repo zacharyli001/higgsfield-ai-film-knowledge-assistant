@@ -2,6 +2,7 @@ const DEFAULTS={
   enabled:true,displayMode:'bilingual',translationEngine:'ai',translationScope:'full',
   provider:'openrouter',apiProtocol:'openai_chat',
   endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'google/gemini-3.1-flash-lite',apiKey:'',
+  audioTranscriptionEndpoint:'https://api.siliconflow.cn/v1/audio/transcriptions',audioTranscriptionModel:'FunAudioLLM/SenseVoiceSmall',
   glossary:'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords:true
 };
@@ -55,6 +56,16 @@ async function fetchText(url,options){
   const response=await fetch(url,options),raw=await response.text();
   if(!response.ok){let detail=raw;try{detail=JSON.parse(raw)?.error?.message||JSON.parse(raw)?.message||raw;}catch(_){ }throw new Error(`API ${response.status}：${String(detail).slice(0,300)}`);}
   return JSON.parse(raw);
+}
+async function transcribeAudio(dataUrl,config){
+  const endpoint=validateEndpoint(config.audioTranscriptionEndpoint||'https://api.siliconflow.cn/v1/audio/transcriptions').toString();
+  const auth=config.apiKey?.trim();if(!auth)throw new Error('请先填写 API Key');
+  const match=String(dataUrl||'').match(/^data:([^;,]+)?;base64,(.+)$/);if(!match)throw new Error('音频数据无效');
+  const binary=atob(match[2]),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  const form=new FormData();form.append('file',new Blob([bytes],{type:match[1]||'audio/webm'}),'higgsfield-audio.webm');form.append('model',config.audioTranscriptionModel||'FunAudioLLM/SenseVoiceSmall');
+  const response=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${auth}`},body:form}),raw=await response.text();
+  if(!response.ok)throw new Error(`语音转写 ${response.status}：${raw.slice(0,240)}`);
+  const text=JSON.parse(raw)?.text?.trim();if(!text)throw new Error('语音转写没有返回文字');return text;
 }
 async function callModel(config,system,user,{json=true,maxTokens=8192}={}){
   const protocol=config.apiProtocol||'openai_chat';
@@ -184,6 +195,10 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   if(msg?.type==='hf-ai-translate'||msg?.type==='hf-translate'){
     if(!Array.isArray(msg.texts)||msg.texts.length>20||msg.texts.some(t=>typeof t!=='string'||t.length>30000)||msg.texts.reduce((sum,text)=>sum+text.length,0)>32000){reply({error:'翻译请求过大'});return;}
     translate(msg.texts).then(items=>reply({results:items.map(text=>({text}))}),e=>reply({error:e.message}));return true;
+  }
+  if(msg?.type==='hf-transcribe-audio'){
+    if(typeof msg.dataUrl!=='string'||msg.dataUrl.length>12000000){reply({ok:false,error:'音频分段无效或过大'});return;}
+    configWith().then(async config=>{const source=await transcribeAudio(msg.dataUrl,config);const [text]=await translate([source]);return {ok:true,source,text};}).then(reply,error=>reply({ok:false,error:error.message}));return true;
   }
   if(msg?.type==='hf-analyze-project'){
     try{

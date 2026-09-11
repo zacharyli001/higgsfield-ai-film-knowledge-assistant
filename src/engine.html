@@ -8,7 +8,7 @@
 </head>
 <body>
 <main>
-  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.4.2</div>
+  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.5.0</div>
   <h1>从看懂项目，到拥有自己的工作流。</h1>
   <p class="intro">中英对照只是入口。助手会提炼 Higgsfield Community Project，并生成可复用、可迁移的专业 AI 影视工作流。</p>
 
@@ -74,6 +74,10 @@
     </label>
     <label class="field"><span>接口地址</span><input id="endpoint" type="url" spellcheck="false"></label>
     <label class="field"><span>API Key</span><input id="apiKey" type="password" autocomplete="off" placeholder="sk-…"></label>
+    <div class="grid two">
+      <label class="field"><span>语音转文字接口</span><input id="audioTranscriptionEndpoint" type="url" spellcheck="false" value="https://api.siliconflow.cn/v1/audio/transcriptions"></label>
+      <label class="field"><span>语音转写模型</span><input id="audioTranscriptionModel" autocomplete="off" value="FunAudioLLM/SenseVoiceSmall"></label>
+    </div>
     <label class="check"><input id="preservePromptKeywords" type="checkbox" checked> 保留 CAMERA、LIGHTING、REFERENCES 等大写提示词标签，并补充中文释义</label>
     <div class="actions">
       <button id="save">保存设置</button>
@@ -81,6 +85,13 @@
     </div>
     <p id="apiStatus" class="status" role="status" aria-live="polite"></p>
     <p class="warning">开启 AI 后，待翻译文字和术语表会发送到所选服务商。API Key 保存在本机 Chrome 扩展存储中，不写入网页。</p>
+  </section>
+
+  <section>
+    <span class="step">视频中文字幕</span>
+    <h2>翻译课程和项目视频</h2>
+    <p>在 Higgsfield 视频页面点击右下角“中文字幕”。有英文字幕时直接翻译时间轴；没有字幕时，分段转写正在播放的音频，再生成中文。</p>
+    <p class="hint">无原字幕的实时转写约有 12–20 秒延迟，并会产生语音转写和文本翻译费用。</p>
   </section>
 
   <section>
@@ -132,7 +143,7 @@
     <p id="actionStatus" class="status" role="status"></p>
   </section>
 
-  <footer>图片和视频画面中的文字不会被识别。可见网页文字、菜单、项目说明、评论和提示词代码块都在扫描范围内。正在输入的表单内容保持原样。</footer>
+  <footer>可见网页文字、菜单、学院课程、项目说明、评论和提示词代码块都在扫描范围内。视频语音可通过“中文字幕”转写；图片以及视频画面里直接印制的文字暂不识别。</footer>
 </main>
 <script src="engine.js"></script>
 </body>

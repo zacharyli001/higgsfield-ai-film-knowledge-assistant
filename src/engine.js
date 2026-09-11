@@ -10,6 +10,8 @@ const DEFAULTS = {
   endpoint: 'https://openrouter.ai/api/v1/chat/completions',
   model: 'google/gemini-3.1-flash-lite',
   apiKey: '',
+  audioTranscriptionEndpoint: 'https://api.siliconflow.cn/v1/audio/transcriptions',
+  audioTranscriptionModel: 'FunAudioLLM/SenseVoiceSmall',
   glossary: 'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords: true
 };
@@ -42,6 +44,8 @@ function formConfig() {
     endpoint: $('endpoint').value.trim(),
     model: $('model').value.trim(),
     apiKey: $('apiKey').value.trim(),
+    audioTranscriptionEndpoint: $('audioTranscriptionEndpoint').value.trim(),
+    audioTranscriptionModel: $('audioTranscriptionModel').value.trim(),
     glossary: $('glossary').value,
     preservePromptKeywords: $('preservePromptKeywords').checked
   };
@@ -71,6 +75,7 @@ async function saveConfig(showStatus = true) {
     if (!config.endpoint || !config.model) throw new Error('请填写接口地址和模型名');
     const allowed = await requestEndpointPermission(config.endpoint);
     if (!allowed) throw new Error('未获得该 API 域名的访问权限');
+    if(config.audioTranscriptionEndpoint){const audioAllowed=await requestEndpointPermission(config.audioTranscriptionEndpoint);if(!audioAllowed)throw new Error('未获得语音转写 API 的访问权限');}
   }
   await chrome.storage.local.set(config);
   await notifyPages();
