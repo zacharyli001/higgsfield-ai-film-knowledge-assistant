@@ -8,7 +8,7 @@
   const attributes=['title','placeholder','aria-label','alt'];
   const blockedSelector='script,style,noscript,textarea,input,select,[contenteditable]:not([contenteditable="false"]),[data-hf-zh-ui]';
   const textBlockedSelector='script,style,noscript,textarea,input,select,[data-hf-zh-ui]';
-  let settings={...DEFAULTS},busy=false,waiting=false,error='',generation=0,timer,panel,status,modeButton,subtitleButton,subtitleOverlay,subtitleCleanup,lastAnalysis=null,lastTask='summary',forceFull=false;
+  let settings={...DEFAULTS},busy=false,waiting=false,error='',generation=0,timer,panel,status,modeButton,subtitleButton,subtitleOverlay,subtitleCleanup,subtitleBroadcasting=false,lastAnalysis=null,lastTask='summary',forceFull=false;
 
   const normalized=text=>text.trim().replace(/\s+/g,' ').replace(/[.…]+$/,'').toLowerCase();
   function eligible(value) {
@@ -370,9 +370,20 @@
     const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([text],{type}));link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
   }
   function largestVideo(){
-    return [...document.querySelectorAll('video')].filter(video=>visible(video)&&video.readyState>0).sort((a,b)=>{
+    const found=new Set(),visited=new Set();
+    const collect=root=>{
+      if(!root||visited.has(root))return;visited.add(root);
+      root.querySelectorAll?.('video').forEach(video=>found.add(video));
+      root.querySelectorAll?.('*').forEach(element=>{if(element.shadowRoot)collect(element.shadowRoot);});
+      root.querySelectorAll?.('iframe').forEach(frame=>{try{if(frame.contentDocument)collect(frame.contentDocument);}catch(_){ }});
+    };
+    collect(document);for(const root of roots.keys())collect(root);
+    return [...found].filter(video=>visible(video)&&video.readyState>0).sort((a,b)=>{
       const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();return br.width*br.height-ar.width*ar.height;
     })[0];
+  }
+  function broadcastSubtitle(action){
+    const visit=win=>{for(let index=0;index<win.frames.length;index++){const child=win.frames[index];try{child.postMessage({type:'hf-zh-subtitle-frame',action},'*');visit(child);}catch(_){ }}};visit(window);
   }
   function showSubtitle(text,source=''){
     if(!subtitleOverlay){
@@ -389,10 +400,18 @@
   function stopSubtitles(){
     subtitleCleanup?.();subtitleCleanup=null;subtitleOverlay?.remove();subtitleOverlay=null;if(subtitleButton)subtitleButton.textContent='中文字幕';
   }
-  async function toggleSubtitles(){
+  async function toggleSubtitles(fromFrame=false){
     if(subtitleCleanup){stopSubtitles();return;}
-    const video=largestVideo();if(!video){showSubtitle('请先打开并播放一个 Higgsfield 视频');setTimeout(stopSubtitles,3500);return;}
-    subtitleButton.textContent='停止字幕';
+    const video=largestVideo();
+    if(!video){
+      if(window.top===window&&!fromFrame){
+        if(subtitleBroadcasting){subtitleBroadcasting=false;broadcastSubtitle('stop');stopSubtitles();return;}
+        subtitleBroadcasting=true;if(subtitleButton)subtitleButton.textContent='停止字幕';showSubtitle('正在连接内嵌课程播放器…');broadcastSubtitle('start');return;
+      }
+      return;
+    }
+    try{if(window.top!==window)window.top.postMessage({type:'hf-zh-subtitle-found'},'*');}catch(_){ }
+    if(subtitleButton)subtitleButton.textContent='停止字幕';
     const tracks=[...video.textTracks];
     if(tracks.length){
       const track=tracks.find(item=>/^en/i.test(item.language||''))||tracks[0];track.mode='hidden';let active=true,last='';
@@ -408,6 +427,12 @@
       recorder.start(12000);showSubtitle('字幕已启动，首段约 12–20 秒后出现');subtitleCleanup=()=>{active=false;if(recorder.state!=='inactive')recorder.stop();audioStream.getTracks().forEach(track=>track.stop());};
     }catch(error){showSubtitle(error.message);setTimeout(stopSubtitles,4500);}
   }
+  window.addEventListener('message',event=>{
+    if(event.data?.type==='hf-zh-subtitle-frame'){
+      if(event.data.action==='stop')stopSubtitles();else if(event.data.action==='start')toggleSubtitles(true);
+    }
+    if(window.top===window&&event.data?.type==='hf-zh-subtitle-found')showSubtitle('已连接课程视频；播放后首段字幕约 12–20 秒出现');
+  });
   function mountPanel() {
     if(window.top!==window)return;
     if(document.querySelector('[data-hf-zh-ui="panel"]'))return;
