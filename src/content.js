@@ -369,6 +369,7 @@
     const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([text],{type}));link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
   }
   function mountPanel() {
+    if(window.top!==window)return;
     if(document.querySelector('[data-hf-zh-ui="panel"]'))return;
     panel=document.createElement('div');panel.setAttribute('data-hf-zh-ui','panel');panel.style.cssText='position:fixed;bottom:16px;right:16px;z-index:2147483647';
     for(const [property,value] of Object.entries({position:'fixed',bottom:'16px',right:'16px','z-index':'2147483647',display:'block',visibility:'visible',opacity:'1'}))panel.style.setProperty(property,value,'important');
@@ -385,7 +386,7 @@
     drawer.querySelector('#copyResult').onclick=async()=>{await navigator.clipboard.writeText(markdown(lastAnalysis));drawer.querySelector('#assistantStatus').textContent='已复制 Markdown。';};
     drawer.querySelector('#exportMd').onclick=()=>download(`${lastAnalysis?.projectTitle||'higgsfield-project'}.md`,markdown(lastAnalysis),'text/markdown');
     drawer.querySelector('#exportJson').onclick=()=>download(`${lastAnalysis?.projectTitle||'higgsfield-project'}.json`,JSON.stringify(lastAnalysis,null,2),'application/json');
-    (document.body||document.documentElement).append(panel);
+    document.documentElement.append(panel);
   }
   chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if(message?.type==='hf-settings-changed'||message?.type==='hf-rescan'){
