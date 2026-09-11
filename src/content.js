@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const DEFAULTS={enabled:true,displayMode:'bilingual',translationEngine:'ai',translationScope:'full'};
+  const DEFAULTS={enabled:true,displayMode:'bilingual',translationEngine:'ai',translationScope:'full',subtitleDelaySeconds:8};
   const dictionary=globalThis.HF_ZH_DICTIONARY || {};
   const records=new Set(), textIndex=new WeakMap(), attrIndex=new WeakMap(), codeIndex=new WeakMap(), richIndex=new WeakMap(),richRoots=new WeakSet();
   const roots=new Map(), pending=new Map(), cache=new Map();
@@ -418,18 +418,25 @@
       const update=async()=>{const source=[...track.activeCues||[]].map(cue=>cue.text).join('\n').trim();if(!active||!source||source===last)return;last=source;showSubtitle('翻译字幕中…');try{showSubtitle(await translateCue(source),source);}catch(error){showSubtitle(error.message);}};
       track.addEventListener('cuechange',update);subtitleCleanup=()=>{active=false;track.removeEventListener('cuechange',update);};update();return;
     }
-    const capture=video.captureStream?.bind(video)||video.mozCaptureStream?.bind(video);if(!capture){showSubtitle('这个视频不允许浏览器抓取音频');setTimeout(stopSubtitles,4000);return;}
+    const captureMethod=video.captureStream?'captureStream':video.mozCaptureStream?'mozCaptureStream':'';if(!captureMethod){showSubtitle('这个视频不允许浏览器抓取音频');setTimeout(stopSubtitles,4000);return;}
     try{
-      const stream=capture(),audio=stream.getAudioTracks();if(!audio.length)throw new Error('没有读取到视频音轨，请先开始播放并确认未静音');
+      const delay=Math.max(4,Math.min(30,Number(settings.subtitleDelaySeconds)||8)),startTime=video.currentTime;
+      let lead=video.cloneNode(true),captureVideo=lead,usingLead=true;
+      lead.removeAttribute('controls');lead.setAttribute('data-hf-zh-ui','subtitle-buffer');lead.style.cssText='position:fixed!important;width:1px!important;height:1px!important;left:-10000px!important;top:0!important;opacity:.001!important;pointer-events:none!important';lead.muted=true;lead.playsInline=true;
+      if(video.currentSrc)lead.src=video.currentSrc;document.documentElement.append(lead);
+      try{lead.currentTime=startTime;await lead.play();}catch(_){usingLead=false;lead.remove();captureVideo=video;}
+      const capture=captureVideo[captureMethod]?.bind(captureVideo);if(!capture)throw new Error('无法建立字幕缓冲播放器');
+      const stream=capture(),audio=stream.getAudioTracks();if(!audio.length){if(usingLead){usingLead=false;lead.pause();lead.remove();captureVideo=video;const fallback=video[captureMethod]();audio.push(...fallback.getAudioTracks());}if(!audio.length)throw new Error('没有读取到视频音轨，请先播放视频');}
+      if(usingLead)video.pause();
       const audioStream=new MediaStream(audio),mime=['audio/webm;codecs=opus','audio/webm'].find(type=>MediaRecorder.isTypeSupported(type))||'';
       const context=new AudioContext(),analyser=context.createAnalyser(),source=context.createMediaStreamSource(audioStream);source.connect(analyser);analyser.fftSize=1024;
-      const samples=new Uint8Array(analyser.fftSize),queue=[];let active=true,processing=false,recorder=null,chunks=[],segmentStart=0,speechSeen=false,silenceStart=0,stopping=false;
+      const samples=new Uint8Array(analyser.fftSize),queue=[],cues=[];let active=true,processing=false,recorder=null,chunks=[],segmentStart=0,segmentMediaStart=startTime,speechSeen=false,silenceStart=0,stopping=false,visibleStarted=!usingLead,autoPaused=false;
       const dataUrl=blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});
-      const processQueue=async()=>{if(processing||!queue.length)return;processing=true;const blob=queue.shift();showSubtitle('正在转写刚刚说完的一句…');try{const result=await chrome.runtime.sendMessage({type:'hf-transcribe-audio',dataUrl:await dataUrl(blob)});if(!result?.ok)throw new Error(result?.error||'语音转写失败');showSubtitle(result.text,result.source);}catch(error){showSubtitle(error.message);}finally{processing=false;if(queue.length)processQueue();}};
+      const processQueue=async()=>{if(processing||!queue.length)return;processing=true;const item=queue.shift();if(!usingLead)showSubtitle('正在转写刚刚说完的一句…');try{const result=await chrome.runtime.sendMessage({type:'hf-transcribe-audio',dataUrl:await dataUrl(item.blob)});if(!result?.ok)throw new Error(result?.error||'语音转写失败');if(usingLead)cues.push({start:item.start,end:item.end+1.8,text:result.text});else showSubtitle(result.text,result.source);}catch(error){showSubtitle(error.message);}finally{processing=false;if(queue.length)processQueue();}};
       const startSegment=()=>{
-        if(!active)return;chunks=[];speechSeen=false;silenceStart=0;stopping=false;segmentStart=performance.now();recorder=new MediaRecorder(audioStream,mime?{mimeType:mime}:undefined);
+        if(!active)return;chunks=[];speechSeen=false;silenceStart=0;stopping=false;segmentStart=performance.now();segmentMediaStart=captureVideo.currentTime;recorder=new MediaRecorder(audioStream,mime?{mimeType:mime}:undefined);
         recorder.ondataavailable=event=>{if(event.data.size)chunks.push(event.data);};
-        recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime||'audio/webm'});if(blob.size>800){if(queue.length>=6)queue.shift();queue.push(blob);processQueue();}startSegment();};
+        recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime||'audio/webm'});if(blob.size>800){if(queue.length>=12)queue.shift();queue.push({blob,start:segmentMediaStart,end:captureVideo.currentTime});processQueue();}startSegment();};
         recorder.start();
       };
       const monitor=setInterval(()=>{
@@ -439,8 +446,15 @@
         const sentenceEnded=speechSeen&&silenceStart&&now-silenceStart>650&&elapsed>1100;
         if(sentenceEnded||elapsed>8000){stopping=true;recorder.stop();}
       },100);
-      context.resume?.();startSegment();showSubtitle('逐句字幕已启动，句末停顿后约 1–3 秒开始转写');
-      subtitleCleanup=()=>{active=false;clearInterval(monitor);if(recorder?.state!=='inactive')recorder.stop();source.disconnect();context.close();audioStream.getTracks().forEach(track=>track.stop());};
+      const synchronizer=setInterval(()=>{
+        if(!active||!usingLead)return;const ahead=lead.currentTime-video.currentTime;
+        if(!visibleStarted&&ahead>=delay){visibleStarted=true;video.play().catch(()=>{});}
+        const cue=cues.find(item=>video.currentTime>=item.start&&video.currentTime<=item.end);if(cue)showSubtitle(cue.text);
+        if(visibleStarted&&ahead<1.5&&(processing||queue.length)){if(!video.paused){video.pause();autoPaused=true;showSubtitle('字幕缓冲中…');}}
+        else if(autoPaused&&ahead>Math.max(3,delay*.55)){autoPaused=false;video.play().catch(()=>{});}
+      },120);
+      context.resume?.();startSegment();showSubtitle(usingLead?`正在预取 ${delay} 秒字幕，随后视频自动播放…`:'逐句字幕已启动，句末停顿后开始转写');
+      subtitleCleanup=()=>{active=false;clearInterval(monitor);clearInterval(synchronizer);if(recorder?.state!=='inactive')recorder.stop();source.disconnect();context.close();audioStream.getTracks().forEach(track=>track.stop());if(usingLead){lead.pause();lead.remove();if(autoPaused||!visibleStarted)video.play().catch(()=>{});}};
     }catch(error){showSubtitle(error.message);setTimeout(stopSubtitles,4500);}
   }
   window.addEventListener('message',event=>{

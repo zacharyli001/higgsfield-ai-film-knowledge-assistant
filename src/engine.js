@@ -12,6 +12,7 @@ const DEFAULTS = {
   apiKey: '',
   audioTranscriptionEndpoint: 'https://api.siliconflow.cn/v1/audio/transcriptions',
   audioTranscriptionModel: 'FunAudioLLM/SenseVoiceSmall',
+  subtitleDelaySeconds: 8,
   glossary: 'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords: true
 };
@@ -46,6 +47,7 @@ function formConfig() {
     apiKey: $('apiKey').value.trim(),
     audioTranscriptionEndpoint: $('audioTranscriptionEndpoint').value.trim(),
     audioTranscriptionModel: $('audioTranscriptionModel').value.trim(),
+    subtitleDelaySeconds: Math.max(4,Math.min(30,Number($('subtitleDelaySeconds').value)||8)),
     glossary: $('glossary').value,
     preservePromptKeywords: $('preservePromptKeywords').checked
   };
@@ -132,7 +134,7 @@ $('test').addEventListener('click', async () => {
   } finally { $('test').disabled = false; }
 });
 
-for (const id of ['enabled','displayMode','translationEngine','translationScope']) {
+for (const id of ['enabled','displayMode','translationEngine','translationScope','subtitleDelaySeconds']) {
   $(id).addEventListener('change', async () => {
     try { await saveConfig(false); }
     catch (error) { $('apiStatus').textContent = `设置未应用：${error.message}`; }
