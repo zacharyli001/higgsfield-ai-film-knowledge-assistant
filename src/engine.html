@@ -1,5 +1,95 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Higgsfield 中文助手 · 翻译控制台</title><link rel="stylesheet" href="engine.css">
-<main><div class="tag">HIGGSFIELD · 中文助手</div><h1>让创作，读起来更轻松。</h1><p class="intro">界面标签即装即译。启动本地引擎后，自动翻译项目介绍、动态弹窗及展开后的英文内容。</p>
-<section><span class="step">01 / 本地翻译</span><h2>开启英文 → 简体中文</h2><p>首次使用可能需要 Chrome 下载语言包。翻译在本机执行，不会将页面文字发送到云端翻译服务。</p><button id="start">启动本地翻译</button><p id="status" role="status" aria-live="polite">等待启动。建议使用最新版桌面 Chrome。</p><progress id="progress" max="1" value="0" hidden></progress><p class="hint">启动后请保留这个标签页，可以切回 Higgsfield。关闭控制台后，未翻译的长文本将等待下次启动。</p></section>
-<section><span class="step">02 / 浏览方式</span><label><input id="enabled" type="checkbox" checked> 自动显示中文</label><p>关闭后恢复原文。网页右下角也能切换中文 / 原文，并重新扫描漏译内容。</p><button id="rescan" class="secondary">重新扫描已打开的 Higgsfield 页面</button><p id="actionStatus" role="status"></p></section>
-<footer>覆盖网页文字、标题、按钮提示、开放的 Shadow DOM 和匹配域名的内嵌页面。图片内文字、视频画面字幕、封闭组件与外站播放器不在本版范围内。用户正在输入的文字保持不变。</footer></main><script src="engine.js"></script></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Higgsfield 中文助手 · 翻译设置</title>
+  <link rel="stylesheet" href="engine.css">
+</head>
+<body>
+<main>
+  <div class="tag">HIGGSFIELD · 中英对照助手 2.0</div>
+  <h1>读懂页面，也读懂提示词。</h1>
+  <p class="intro">保留英文原文，在下方显示专业中文。支持第三方 AI、Chrome 本地翻译和自定义术语库。</p>
+
+  <section>
+    <span class="step">01 / 显示方式</span>
+    <h2>页面翻译</h2>
+    <div class="grid two">
+      <label class="field"><span>显示模式</span>
+        <select id="displayMode">
+          <option value="bilingual">中英对照（推荐）</option>
+          <option value="zh">仅显示中文</option>
+          <option value="original">仅显示原文</option>
+        </select>
+      </label>
+      <label class="field"><span>翻译引擎</span>
+        <select id="translationEngine">
+          <option value="ai">第三方 AI（推荐）</option>
+          <option value="local">Chrome 本地翻译</option>
+        </select>
+      </label>
+    </div>
+    <label class="check"><input id="enabled" type="checkbox" checked> 在 Higgsfield 自动运行</label>
+    <p class="hint">中英对照会保留提示词中的英文、颜色高亮和 @标签，并在代码块下方生成中文译文。</p>
+  </section>
+
+  <section id="aiSection">
+    <span class="step">02 / 第三方 AI</span>
+    <h2>连接翻译接口</h2>
+    <p>兼容 DeepSeek、OpenAI，以及采用 OpenAI Chat Completions 格式的第三方服务。</p>
+    <div class="grid two">
+      <label class="field"><span>服务商</span>
+        <select id="provider">
+          <option value="deepseek">DeepSeek</option>
+          <option value="openai">OpenAI</option>
+          <option value="compatible">其他 OpenAI 兼容接口</option>
+        </select>
+      </label>
+      <label class="field"><span>模型</span><input id="model" autocomplete="off"></label>
+    </div>
+    <label class="field"><span>接口地址</span><input id="endpoint" type="url" spellcheck="false"></label>
+    <label class="field"><span>API Key</span><input id="apiKey" type="password" autocomplete="off" placeholder="sk-…"></label>
+    <label class="check"><input id="preservePromptKeywords" type="checkbox" checked> 保留 CAMERA、LIGHTING、REFERENCES 等大写提示词标签，并补充中文释义</label>
+    <div class="actions">
+      <button id="save">保存设置</button>
+      <button id="test" class="secondary">测试 API</button>
+    </div>
+    <p id="apiStatus" class="status" role="status" aria-live="polite"></p>
+    <p class="warning">开启 AI 后，待翻译文字和术语表会发送到所选服务商。API Key 保存在本机 Chrome 扩展存储中，不写入网页。</p>
+  </section>
+
+  <section>
+    <span class="step">03 / 专有名词库</span>
+    <h2>固定译法与保护词</h2>
+    <p>每行一条，格式为“英文 = 中文”。两边写相同内容即可保护品牌、人物名、@标签或模型名不被翻译。</p>
+    <textarea id="glossary" rows="12" spellcheck="false" placeholder="Higgsfield = Higgsfield&#10;dolly-in = 推轨靠近&#10;@char_CB_Cal = @char_CB_Cal"></textarea>
+    <div class="actions">
+      <label class="fileButton">导入 TXT / JSON<input id="importGlossary" type="file" accept=".txt,.json,text/plain,application/json"></label>
+      <button id="exportGlossary" class="secondary">导出术语库</button>
+      <button id="saveGlossary" class="secondary">保存术语库</button>
+    </div>
+    <p id="glossaryStatus" class="status" role="status"></p>
+  </section>
+
+  <section id="localSection">
+    <span class="step">04 / 本地备用</span>
+    <h2>Chrome 英文 → 简体中文</h2>
+    <p>不发送网页文字，但译文连贯性和术语控制弱于 AI。首次使用可能需要下载语言包；启动后需保留此标签页。</p>
+    <button id="start">启动本地翻译</button>
+    <p id="status" class="status" role="status" aria-live="polite">尚未启动。</p>
+    <progress id="progress" max="1" value="0" hidden></progress>
+  </section>
+
+  <section>
+    <span class="step">05 / 应用</span>
+    <h2>让已打开的页面立即更新</h2>
+    <button id="rescan">重新翻译 Higgsfield 页面</button>
+    <p id="actionStatus" class="status" role="status"></p>
+  </section>
+
+  <footer>图片和视频画面中的文字不会被识别。可见网页文字、菜单、项目说明、评论和提示词代码块都在扫描范围内。正在输入的表单内容保持原样。</footer>
+</main>
+<script src="engine.js"></script>
+</body>
+</html>

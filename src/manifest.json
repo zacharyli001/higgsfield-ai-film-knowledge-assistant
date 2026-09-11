@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Higgsfield 中文助手",
-  "version": "1.0.0",
-  "description": "动态翻译 Higgsfield 界面与英文项目介绍；使用 Chrome 本地翻译。",
+  "version": "2.0.0",
+  "description": "Higgsfield 全页中英对照翻译，支持第三方 AI API、提示词代码块和专有名词库。",
   "minimum_chrome_version": "138",
   "permissions": [
     "storage"
@@ -10,6 +10,11 @@
   "host_permissions": [
     "https://higgsfield.ai/*",
     "https://*.higgsfield.ai/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background.js"
