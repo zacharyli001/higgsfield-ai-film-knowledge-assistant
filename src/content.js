@@ -183,12 +183,12 @@
   }
   function scanRichDocuments(root){
     const documents=[];
-    const selector='.rde-content,.ProseMirror,[data-lexical-editor],[role="textbox"],[contenteditable="true"],[contenteditable="false"]';
+    const selector='.rde-content,.rde-root,.ProseMirror,[data-lexical-editor],[role="textbox"],[aria-multiline="true"],[contenteditable]';
     if(root.nodeType===1&&root.matches?.(selector))documents.push(root);
     if(root.querySelectorAll)documents.push(...root.querySelectorAll(selector));
     if(root.querySelectorAll){
       const heading=[...root.querySelectorAll('h1,h2,h3,h4,h5,h6')].find(node=>/^about\s+the\s+project$/i.test(node.textContent?.trim()||''));
-      const projectRoot=heading?.closest?.('.rde-content,.ProseMirror,[role="textbox"],[contenteditable],article,main')||heading?.parentElement;
+      const projectRoot=heading?.closest?.('.rde-content,.rde-root,.ProseMirror,[data-lexical-editor],[role="textbox"],[contenteditable],article,main')||heading?.parentElement;
       if(projectRoot)documents.push(projectRoot);
     }
     for(const documentRoot of new Set(documents)){
