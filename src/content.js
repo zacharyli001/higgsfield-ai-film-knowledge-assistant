@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const DEFAULTS={enabled:true,displayMode:'bilingual',translationEngine:'local',translationScope:'full'};
+  const DEFAULTS={enabled:true,displayMode:'bilingual',translationEngine:'ai',translationScope:'full'};
   const dictionary=globalThis.HF_ZH_DICTIONARY || {};
   const records=new Set(), textIndex=new WeakMap(), attrIndex=new WeakMap(), codeIndex=new WeakMap(), richIndex=new WeakMap(),richRoots=new WeakSet();
   const roots=new Map(), pending=new Map(), cache=new Map();
@@ -13,8 +13,7 @@
   function eligible(value) {
     const text=String(value||'').trim();
     return /[a-zA-Z]/.test(text)
-      && !/^(https?:\/\/|www\.|\S+@\S+\.\S+)/i.test(text)
-      && !/^(higgsfield|chrome|youtube|instagram|tiktok|discord|4k|1080p)$/i.test(text);
+      && !/^(https?:\/\/|www\.|\S+@\S+\.\S+)/i.test(text);
   }
   function blocked(element) {
     for(let current=element;current;) {
@@ -75,7 +74,7 @@
     record.applied=null;
   }
   function apply(record, chinese) {
-    if(!record.node.isConnected || blocked(record.kind==='text'?record.node.parentElement:record.node)) return;
+    if(!record.node.isConnected || (record.kind!=='rich'&&blocked(record.kind==='text'?record.node.parentElement:record.node))) return;
     record.chinese=String(chinese).trim();
     if(!record.chinese) return;
     if(!settings.enabled || settings.displayMode==='original') { restore(record); return; }
@@ -169,11 +168,18 @@
   }
   function scanRichDocuments(root){
     const documents=[];
-    if(root.nodeType===1&&root.matches?.('.published-project-rich-document .rde-content[aria-readonly="true"],.rde-content[role="textbox"][contenteditable="false"]'))documents.push(root);
-    if(root.querySelectorAll)documents.push(...root.querySelectorAll('.published-project-rich-document .rde-content[aria-readonly="true"],.rde-content[role="textbox"][contenteditable="false"]'));
-    for(const documentRoot of documents){
+    const selector='.rde-content,.ProseMirror,[data-lexical-editor],[role="textbox"],[contenteditable="true"],[contenteditable="false"]';
+    if(root.nodeType===1&&root.matches?.(selector))documents.push(root);
+    if(root.querySelectorAll)documents.push(...root.querySelectorAll(selector));
+    if(root.querySelectorAll){
+      const heading=[...root.querySelectorAll('h1,h2,h3,h4,h5,h6')].find(node=>/^about\s+the\s+project$/i.test(node.textContent?.trim()||''));
+      const projectRoot=heading?.closest?.('.rde-content,.ProseMirror,[role="textbox"],[contenteditable],article,main')||heading?.parentElement;
+      if(projectRoot)documents.push(projectRoot);
+    }
+    for(const documentRoot of new Set(documents)){
       richRoots.add(documentRoot);
       const blocks=documentRoot.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,pre,code.rde-code,blockquote');
+      if(!blocks.length){richRecord(documentRoot);continue;}
       for(const block of blocks){
         if(block.closest('li')&&block.tagName!=='LI')continue;
         if(block.closest('pre')&&block.tagName!=='PRE')continue;

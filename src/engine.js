@@ -3,7 +3,7 @@
 const DEFAULTS = {
   enabled: true,
   displayMode: 'bilingual',
-  translationEngine: 'local',
+  translationEngine: 'ai',
   translationScope: 'full',
   provider: 'openrouter',
   apiProtocol: 'openai_chat',

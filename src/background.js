@@ -1,5 +1,5 @@
 const DEFAULTS={
-  enabled:true,displayMode:'bilingual',translationEngine:'local',translationScope:'full',
+  enabled:true,displayMode:'bilingual',translationEngine:'ai',translationScope:'full',
   provider:'openrouter',apiProtocol:'openai_chat',
   endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'google/gemini-3.1-flash-lite',apiKey:'',
   glossary:'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
@@ -12,7 +12,10 @@ async function openEngine(){
   if(tabs.length)await chrome.tabs.update(tabs[0].id,{active:true});else await chrome.tabs.create({url});
 }
 chrome.action.onClicked.addListener(openEngine);
-chrome.runtime.onInstalled.addListener(()=>chrome.storage.local.set({translationScope:'full'}));
+chrome.runtime.onInstalled.addListener(async()=>{
+  const stored=await chrome.storage.local.get({apiKey:'',translationEngine:'ai'});
+  await chrome.storage.local.set({translationScope:'full',translationEngine:stored.apiKey?'ai':stored.translationEngine});
+});
 
 function validateEndpoint(raw){
   const url=new URL(raw);
@@ -178,7 +181,7 @@ async function notifyPages(type='hf-settings-changed'){
 chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   if(sender.id!==chrome.runtime.id)return;
   if(msg?.type==='hf-open'){openEngine().then(()=>reply({ok:true}),e=>reply({ok:false,error:e.message}));return true;}
-  if(msg?.type==='hf-ai-translate'){
+  if(msg?.type==='hf-ai-translate'||msg?.type==='hf-translate'){
     if(!Array.isArray(msg.texts)||msg.texts.length>20||msg.texts.some(t=>typeof t!=='string'||t.length>30000)||msg.texts.reduce((sum,text)=>sum+text.length,0)>32000){reply({error:'翻译请求过大'});return;}
     translate(msg.texts).then(items=>reply({results:items.map(text=>({text}))}),e=>reply({error:e.message}));return true;
   }
