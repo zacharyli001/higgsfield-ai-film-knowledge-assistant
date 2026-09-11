@@ -7,6 +7,7 @@
   const roots=new Map(), pending=new Map(), cache=new Map();
   const attributes=['title','placeholder','aria-label','alt'];
   const blockedSelector='script,style,noscript,textarea,input,select,[contenteditable]:not([contenteditable="false"]),[data-hf-zh-ui]';
+  const textBlockedSelector='script,style,noscript,textarea,input,select,[data-hf-zh-ui]';
   let settings={...DEFAULTS},busy=false,waiting=false,error='',generation=0,timer,panel,status,modeButton,lastAnalysis=null,lastTask='summary',forceFull=false;
 
   const normalized=text=>text.trim().replace(/\s+/g,' ').replace(/[.…]+$/,'').toLowerCase();
@@ -18,6 +19,13 @@
   function blocked(element) {
     for(let current=element;current;) {
       if(current.matches?.(blockedSelector)) return true;
+      current=current.parentElement || current.getRootNode()?.host;
+    }
+    return false;
+  }
+  function textBlocked(element) {
+    for(let current=element;current;) {
+      if(current.matches?.(textBlockedSelector)) return true;
       current=current.parentElement || current.getRootNode()?.host;
     }
     return false;
@@ -36,7 +44,7 @@
   function codeContainer(node) {
     const parent=node.nodeType===3?node.parentElement:node;
     const direct=parent?.closest?.('pre,code,[data-language],[class*="code-block"],[class*="codeBlock"],[class*="highlight"]');
-    if(!direct || blocked(direct)) return null;
+    if(!direct || textBlocked(direct)) return null;
     const pre=direct.closest?.('pre');
     return pre || direct;
   }
@@ -79,7 +87,7 @@
     record.applied=null;
   }
   function apply(record, chinese) {
-    if(!record.node.isConnected || (record.kind!=='rich'&&blocked(record.kind==='text'?record.node.parentElement:record.node))) return;
+    if(!record.node.isConnected || (record.kind!=='rich'&&((record.kind==='text'||record.kind==='code')?textBlocked(record.kind==='text'?record.node.parentElement:record.node):blocked(record.node)))) return;
     record.chinese=String(chinese).trim();
     if(!record.chinese) return;
     if(!settings.enabled || settings.displayMode==='original') { restore(record); return; }
@@ -131,7 +139,7 @@
   }
   function textRecord(node) {
     const text=node.nodeValue;
-    if(!text || !eligible(text) || blocked(node.parentElement) || codeContainer(node) || inRichDocument(node.parentElement)) return;
+    if(!text || !eligible(text) || textBlocked(node.parentElement) || codeContainer(node)) return;
     let record=textIndex.get(node);
     if(record && (text===record.original || text===record.applied)) {
       if(record.chinese) apply(record,record.chinese); else queue(record);
@@ -216,13 +224,11 @@
   }
   function scanRoot(root) {
     observe(root);
-    scanRichDocuments(root);
     const handledCode=new Set();
     const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT);
     let node;
     while((node=walker.nextNode())) {
       if(node.nodeType===3) {
-        if(inRichDocument(node.parentElement))continue;
         const code=codeContainer(node);
         if(code) {if(!handledCode.has(code)){handledCode.add(code);codeRecord(code);}}
         else textRecord(node);
@@ -363,8 +369,9 @@
     const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([text],{type}));link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
   }
   function mountPanel() {
-    if(window.top!==window)return;
+    if(document.querySelector('[data-hf-zh-ui="panel"]'))return;
     panel=document.createElement('div');panel.setAttribute('data-hf-zh-ui','panel');panel.style.cssText='position:fixed;bottom:16px;right:16px;z-index:2147483647';
+    for(const [property,value] of Object.entries({position:'fixed',bottom:'16px',right:'16px','z-index':'2147483647',display:'block',visibility:'visible',opacity:'1'}))panel.style.setProperty(property,value,'important');
     const shadow=panel.attachShadow({mode:'open'});
     shadow.innerHTML='<style>:host{all:initial}.box,.drawer{font:12px/1.55 -apple-system,"PingFang SC",sans-serif;background:#172014;color:#e7f1df;border:1px solid #526347;border-radius:12px;box-shadow:0 5px 24px #0007}.box{padding:10px 12px;max-width:420px}.box p{margin:0 0 7px}.drawer{position:fixed;right:16px;bottom:76px;width:min(500px,calc(100vw - 32px));height:min(780px,calc(100vh - 100px));padding:18px;overflow:auto}.drawer[hidden]{display:none}h2{font-size:20px;margin:0 0 4px}h3{font-size:14px;color:#b9e98d;margin:0 0 6px}section{border-top:1px solid #34432a;padding:12px 0}.analysis-group{display:block;border-left:2px solid #526347;padding-left:9px;margin:7px 0}.analysis-group strong{display:block;color:#dfead8}ul{margin:6px 0;padding-left:20px}li{margin:4px 0}button{font:inherit;color:#e9f6dc;background:#34432a;border:0;border-radius:6px;padding:6px 9px;cursor:pointer;margin:2px}button.primary{background:#b9e98d;color:#172014}button:disabled{opacity:.5}textarea{box-sizing:border-box;width:100%;min-height:70px;margin:8px 0;background:#0d120c;color:#eef5e9;border:1px solid #526347;border-radius:8px;padding:9px;font:12px/1.5 inherit}.muted{color:#99a990}.actions{display:flex;flex-wrap:wrap;gap:3px;margin:8px 0}</style><div class="drawer" id="drawer" hidden><button id="close" style="float:right">关闭</button><h2>Community 项目助手</h2><p class="muted">提炼当前 Higgsfield Project，沉淀为可复用影视工作流。</p><div class="actions"><button class="primary" data-task="summary">快速提炼</button><button data-task="workflow">工作流还原</button><button data-task="migrate">迁移到 TapNow</button></div><textarea id="question" placeholder="针对当前项目提问，例如：它如何保持角色和空间连续性？"></textarea><button data-task="ask">询问当前项目</button><p id="assistantStatus" class="muted"></p><div id="analysis"></div><div id="resultActions" class="actions" hidden><button id="saveCard">保存知识卡</button><button id="copyResult">复制 Markdown</button><button id="exportMd">导出 Markdown</button><button id="exportJson">导出 JSON</button></div></div><div class="box"><p role="status"></p><button class="primary" id="assistant">AI 项目助手</button><button id="mode"></button><button id="scan">重新扫描</button><button id="full">强制全局翻译</button><button id="settings">设置</button></div>';
     status=shadow.querySelector('p');modeButton=shadow.querySelector('#mode');
@@ -378,7 +385,7 @@
     drawer.querySelector('#copyResult').onclick=async()=>{await navigator.clipboard.writeText(markdown(lastAnalysis));drawer.querySelector('#assistantStatus').textContent='已复制 Markdown。';};
     drawer.querySelector('#exportMd').onclick=()=>download(`${lastAnalysis?.projectTitle||'higgsfield-project'}.md`,markdown(lastAnalysis),'text/markdown');
     drawer.querySelector('#exportJson').onclick=()=>download(`${lastAnalysis?.projectTitle||'higgsfield-project'}.json`,JSON.stringify(lastAnalysis,null,2),'application/json');
-    document.documentElement.append(panel);
+    (document.body||document.documentElement).append(panel);
   }
   chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if(message?.type==='hf-settings-changed'||message?.type==='hf-rescan'){
