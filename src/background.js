@@ -12,7 +12,22 @@ async function openEngine(){
   const tabs=await chrome.tabs.query({url});
   if(tabs.length)await chrome.tabs.update(tabs[0].id,{active:true});else await chrome.tabs.create({url});
 }
-chrome.action.onClicked.addListener(openEngine);
+let offscreenCreating;
+async function ensureOffscreen(){
+  const url=chrome.runtime.getURL('offscreen.html'),contexts=await chrome.runtime.getContexts({contextTypes:['OFFSCREEN_DOCUMENT'],documentUrls:[url]});
+  if(contexts.length)return;if(!offscreenCreating)offscreenCreating=chrome.offscreen.createDocument({url:'offscreen.html',reasons:['USER_MEDIA'],justification:'捕获 Higgsfield 课程标签页音频并生成中文字幕'}).finally(()=>offscreenCreating=null);await offscreenCreating;
+}
+async function startTabSubtitles(tabId){
+  await ensureOffscreen();const streamId=await chrome.tabCapture.getMediaStreamId({targetTabId:tabId});
+  return chrome.runtime.sendMessage({type:'hf-offscreen-start',streamId,tabId});
+}
+chrome.action.onClicked.addListener(async tab=>{
+  if(tab?.id&&/^https:\/\/([^.]+\.)?higgsfield\.ai\/academy\//i.test(tab.url||'')){
+    try{await startTabSubtitles(tab.id);await chrome.tabs.sendMessage(tab.id,{type:'hf-subtitle-status',text:'标签页音频捕获已启动，正在逐句生成字幕'});}
+    catch(error){await chrome.tabs.sendMessage(tab.id,{type:'hf-subtitle-status',text:`字幕启动失败：${error.message}`}).catch(()=>{});}return;
+  }
+  openEngine();
+});
 chrome.runtime.onInstalled.addListener(async()=>{
   const stored=await chrome.storage.local.get({apiKey:'',translationEngine:'ai'});
   await chrome.storage.local.set({translationScope:'full',translationEngine:stored.apiKey?'ai':stored.translationEngine});
@@ -191,6 +206,15 @@ async function notifyPages(type='hf-settings-changed'){
 }
 chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   if(sender.id!==chrome.runtime.id)return;
+  if(msg?.type==='hf-start-tab-subtitles'){
+    if(!sender.tab?.id){reply({ok:false,error:'无法确定当前 Higgsfield 标签页'});return;}
+    startTabSubtitles(sender.tab.id).then(()=>reply({ok:true}),error=>reply({ok:false,error:`请点击浏览器右上角的扩展图标启动字幕（Chrome 要求用户从扩展图标授权标签页录音）：${error.message}`}));return true;
+  }
+  if(msg?.type==='hf-stop-tab-subtitles'){chrome.runtime.sendMessage({type:'hf-offscreen-stop',tabId:sender.tab?.id}).then(()=>reply({ok:true}),error=>reply({ok:false,error:error.message}));return true;}
+  if(msg?.type==='hf-offscreen-audio-chunk'){
+    if(typeof msg.dataUrl!=='string'||msg.dataUrl.length>12000000||!Number.isInteger(msg.tabId)){reply({ok:false,error:'字幕音频分段无效'});return;}
+    configWith().then(async config=>{const source=await transcribeAudio(msg.dataUrl,config);const [text]=await translate([source]);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text,source});return {ok:true};}).then(reply,error=>{chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-status',text:`字幕错误：${error.message}`}).catch(()=>{});reply({ok:false,error:error.message});});return true;
+  }
   if(msg?.type==='hf-open'){openEngine().then(()=>reply({ok:true}),e=>reply({ok:false,error:e.message}));return true;}
   if(msg?.type==='hf-ai-translate'||msg?.type==='hf-translate'){
     if(!Array.isArray(msg.texts)||msg.texts.length>20||msg.texts.some(t=>typeof t!=='string'||t.length>30000)||msg.texts.reduce((sum,text)=>sum+text.length,0)>32000){reply({error:'翻译请求过大'});return;}

@@ -401,6 +401,13 @@
     subtitleCleanup?.();subtitleCleanup=null;subtitleOverlay?.remove();subtitleOverlay=null;if(subtitleButton)subtitleButton.textContent='中文字幕';
   }
   async function toggleSubtitles(fromFrame=false){
+    if(window.top===window&&!fromFrame&&location.pathname.startsWith('/academy/')){
+      if(subtitleBroadcasting){subtitleBroadcasting=false;await chrome.runtime.sendMessage({type:'hf-stop-tab-subtitles'}).catch(()=>{});stopSubtitles();return;}
+      subtitleBroadcasting=true;if(subtitleButton)subtitleButton.textContent='停止字幕';showSubtitle('正在申请捕获 Higgsfield 应用音频…');
+      const response=await chrome.runtime.sendMessage({type:'hf-start-tab-subtitles'}).catch(error=>({ok:false,error:error.message}));
+      if(response?.ok){showSubtitle('音频捕获已启动；正在逐句识别');return;}
+      subtitleBroadcasting=false;if(subtitleButton)subtitleButton.textContent='中文字幕';showSubtitle(response?.error||'请点击右上角扩展图标启动字幕');return;
+    }
     if(subtitleCleanup){stopSubtitles();return;}
     const video=largestVideo();
     if(!video){
@@ -492,6 +499,8 @@
     try{if(panel.showPopover&&!panel.matches(':popover-open'))panel.showPopover();}catch(_){ }
   }
   chrome.runtime.onMessage.addListener((message,sender,reply)=>{
+    if(message?.type==='hf-subtitle-update'){subtitleBroadcasting=true;if(subtitleButton)subtitleButton.textContent='停止字幕';showSubtitle(message.text,message.source);reply({ok:true});return;}
+    if(message?.type==='hf-subtitle-status'){showSubtitle(message.text);reply({ok:true});return;}
     if(message?.type==='hf-settings-changed'||message?.type==='hf-rescan'){
       chrome.storage.local.get(DEFAULTS).then(next=>{settings=next;scan();});reply({ok:true});
     }
