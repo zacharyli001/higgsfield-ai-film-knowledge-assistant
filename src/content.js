@@ -1,6 +1,10 @@
 (() => {
   'use strict';
 
+  // Reloading an unpacked extension leaves UI created by the previous content-script
+  // instance in already-open tabs. Remove it before mounting the current instance.
+  document.querySelectorAll('[data-hf-zh-ui]').forEach(node=>node.remove());
+
   const DEFAULTS={enabled:true,displayMode:'bilingual',translationEngine:'ai',translationScope:'full',subtitleDelaySeconds:8,subtitleOutputMode:'chinese'};
   const dictionary=globalThis.HF_ZH_DICTIONARY || {};
   const records=new Set(), textIndex=new WeakMap(), attrIndex=new WeakMap(), codeIndex=new WeakMap(), richIndex=new WeakMap(),richRoots=new WeakSet();
@@ -407,7 +411,7 @@
     subtitleCleanup?.();subtitleCleanup=null;subtitleOverlay?.remove();subtitleOverlay=null;lastSubtitleSequence=-1;setSubtitleSwitch(false);
   }
   async function toggleSubtitles(fromFrame=false){
-    if(window.top===window&&!fromFrame&&location.pathname.startsWith('/academy/')){
+    if(window.top===window&&!fromFrame){
       if(subtitleBroadcasting){subtitleBroadcasting=false;await chrome.runtime.sendMessage({type:'hf-stop-tab-subtitles'}).catch(()=>{});stopSubtitles();return;}
       subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle('正在申请捕获 Higgsfield 应用音频…');
       const response=await chrome.runtime.sendMessage({type:'hf-start-tab-subtitles'}).catch(error=>({ok:false,error:error.message}));
@@ -419,7 +423,7 @@
     if(!video){
       if(window.top===window&&!fromFrame){
         if(subtitleBroadcasting){subtitleBroadcasting=false;broadcastSubtitle('stop');stopSubtitles();return;}
-        subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle('正在连接内嵌课程播放器…');broadcastSubtitle('start');return;
+        subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle('正在连接内嵌视频播放器…');broadcastSubtitle('start');return;
       }
       return;
     }
@@ -445,7 +449,7 @@
       const context=new AudioContext(),analyser=context.createAnalyser(),source=context.createMediaStreamSource(audioStream);source.connect(analyser);analyser.fftSize=1024;
       const samples=new Uint8Array(analyser.fftSize),queue=[],cues=[];let active=true,processing=false,recorder=null,chunks=[],segmentStart=0,segmentMediaStart=startTime,speechSeen=false,silenceStart=0,stopping=false,visibleStarted=!usingLead,autoPaused=false;
       const dataUrl=blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});
-      const processQueue=async()=>{if(processing||!queue.length)return;processing=true;const item=queue.shift();if(!usingLead)showSubtitle('正在转写刚刚说完的一句…');try{const result=await chrome.runtime.sendMessage({type:'hf-transcribe-audio',dataUrl:await dataUrl(item.blob)});if(!result?.ok)throw new Error(result?.error||'语音转写失败');if(usingLead)cues.push({start:item.start,end:item.end+1.8,text:result.text});else showSubtitle(result.text,result.source);}catch(error){showSubtitle(error.message);}finally{processing=false;if(queue.length)processQueue();}};
+      const processQueue=async()=>{if(processing||!queue.length)return;processing=true;const item=queue.shift();if(!usingLead)showSubtitle('正在转写刚刚说完的一句…');try{const result=await chrome.runtime.sendMessage({type:'hf-transcribe-audio',dataUrl:await dataUrl(item.blob)});if(result?.skipped)return;if(!result?.ok)throw new Error(result?.error||'语音转写失败');if(usingLead)cues.push({start:item.start,end:item.end+1.8,text:result.text});else showSubtitle(result.text,result.source);}catch(error){if(/Extension context invalidated/i.test(String(error?.message||error))){stopSubtitles();return;}if(!/operation could not be completed|no speech|没有识别|没有听到/i.test(String(error?.message||error)))showSubtitle(error.message);}finally{processing=false;if(queue.length)processQueue();}};
       const startSegment=()=>{
         if(!active)return;chunks=[];speechSeen=false;silenceStart=0;stopping=false;segmentStart=performance.now();segmentMediaStart=captureVideo.currentTime;recorder=new MediaRecorder(audioStream,mime?{mimeType:mime}:undefined);
         recorder.ondataavailable=event=>{if(event.data.size)chunks.push(event.data);};

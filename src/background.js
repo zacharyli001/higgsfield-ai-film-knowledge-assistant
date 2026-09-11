@@ -36,14 +36,14 @@ async function openEngine(){
 let offscreenCreating;
 async function ensureOffscreen(){
   const url=chrome.runtime.getURL('offscreen.html'),contexts=await chrome.runtime.getContexts({contextTypes:['OFFSCREEN_DOCUMENT'],documentUrls:[url]});
-  if(contexts.length)return;if(!offscreenCreating)offscreenCreating=chrome.offscreen.createDocument({url:'offscreen.html',reasons:['USER_MEDIA'],justification:'捕获 Higgsfield 课程标签页音频并生成中文字幕'}).finally(()=>offscreenCreating=null);await offscreenCreating;
+  if(contexts.length)return;if(!offscreenCreating)offscreenCreating=chrome.offscreen.createDocument({url:'offscreen.html',reasons:['USER_MEDIA'],justification:'捕获 Higgsfield 视频标签页音频并生成中文字幕'}).finally(()=>offscreenCreating=null);await offscreenCreating;
 }
 async function startTabSubtitles(tabId){
   await ensureOffscreen();const streamId=await chrome.tabCapture.getMediaStreamId({targetTabId:tabId});
   return chrome.runtime.sendMessage({type:'hf-offscreen-start',streamId,tabId});
 }
 chrome.action.onClicked.addListener(async tab=>{
-  if(tab?.id&&/^https:\/\/([^.]+\.)?higgsfield\.ai\/academy\//i.test(tab.url||'')){
+  if(tab?.id&&/^https:\/\/([^.]+\.)?higgsfield\.ai\//i.test(tab.url||'')){
     try{await startTabSubtitles(tab.id);await chrome.tabs.sendMessage(tab.id,{type:'hf-subtitle-status',text:'标签页音频捕获已启动，正在逐句生成字幕'});}
     catch(error){await chrome.tabs.sendMessage(tab.id,{type:'hf-subtitle-status',text:`字幕启动失败：${error.message}`}).catch(()=>{});}return;
   }
@@ -255,7 +255,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   }
   if(msg?.type==='hf-transcribe-audio'){
     if(typeof msg.dataUrl!=='string'||msg.dataUrl.length>12000000){reply({ok:false,error:'音频分段无效或过大'});return;}
-    configWith().then(config=>subtitleFromAudio(msg.dataUrl,config).then(result=>({ok:true,...result}))).then(reply,error=>reply({ok:false,error:error.message}));return true;
+    configWith().then(config=>subtitleFromAudio(msg.dataUrl,config).then(result=>({ok:true,...result}))).then(reply,error=>reply(transientSpeechError(error)?{ok:false,skipped:true,error:error.message}:{ok:false,error:error.message}));return true;
   }
   if(msg?.type==='hf-test-native'){nativeRequest({action:'ping'},5000).then(result=>reply({ok:true,message:result.message||'Apple 本地语音助手已连接'}),error=>reply({ok:false,error:error.message}));return true;}
   if(msg?.type==='hf-analyze-project'){
