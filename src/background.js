@@ -75,9 +75,10 @@ async function fetchText(url,options){
 async function transcribeAudio(dataUrl,config){
   const endpoint=validateEndpoint(config.audioTranscriptionEndpoint||'https://api.siliconflow.cn/v1/audio/transcriptions').toString();
   const auth=config.apiKey?.trim();if(!auth)throw new Error('请先填写 API Key');
-  const match=String(dataUrl||'').match(/^data:([^;,]+)?;base64,(.+)$/);if(!match)throw new Error('音频数据无效');
+  const match=String(dataUrl||'').match(/^data:([^,]*?);base64,([A-Za-z0-9+/=\s]+)$/);if(!match)throw new Error('音频数据无效');
   const binary=atob(match[2]),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-  const form=new FormData();form.append('file',new Blob([bytes],{type:match[1]||'audio/webm'}),'higgsfield-audio.webm');form.append('model',config.audioTranscriptionModel||'FunAudioLLM/SenseVoiceSmall');
+  const mime=(match[1]||'audio/webm').split(';')[0]||'audio/webm';
+  const form=new FormData();form.append('file',new Blob([bytes],{type:mime}),'higgsfield-audio.webm');form.append('model',config.audioTranscriptionModel||'FunAudioLLM/SenseVoiceSmall');
   const response=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${auth}`},body:form}),raw=await response.text();
   if(!response.ok)throw new Error(`语音转写 ${response.status}：${raw.slice(0,240)}`);
   const text=JSON.parse(raw)?.text?.trim();if(!text)throw new Error('语音转写没有返回文字');return text;
