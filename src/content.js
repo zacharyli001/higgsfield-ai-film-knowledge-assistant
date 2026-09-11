@@ -398,32 +398,33 @@
     subtitleOverlay.textContent=text||source||'正在识别语音…';
     raiseSubtitle();if(relay&&window.top===window)broadcastSubtitle('display',{text,source});
   }
+  function setSubtitleSwitch(active){if(!subtitleButton)return;subtitleButton.textContent=active?'字幕翻译：开':'字幕翻译：关';subtitleButton.classList.toggle('primary',active);subtitleButton.setAttribute('aria-pressed',String(active));}
   async function translateCue(text){
     const response=await chrome.runtime.sendMessage({type:'hf-ai-translate',texts:[text]});
     if(!response?.results?.[0]?.text)throw new Error(response?.error||'字幕翻译失败');return response.results[0].text;
   }
   function stopSubtitles(){
-    subtitleCleanup?.();subtitleCleanup=null;subtitleOverlay?.remove();subtitleOverlay=null;lastSubtitleSequence=-1;if(subtitleButton)subtitleButton.textContent='中文字幕';
+    subtitleCleanup?.();subtitleCleanup=null;subtitleOverlay?.remove();subtitleOverlay=null;lastSubtitleSequence=-1;setSubtitleSwitch(false);
   }
   async function toggleSubtitles(fromFrame=false){
     if(window.top===window&&!fromFrame&&location.pathname.startsWith('/academy/')){
       if(subtitleBroadcasting){subtitleBroadcasting=false;await chrome.runtime.sendMessage({type:'hf-stop-tab-subtitles'}).catch(()=>{});stopSubtitles();return;}
-      subtitleBroadcasting=true;if(subtitleButton)subtitleButton.textContent='停止字幕';showSubtitle('正在申请捕获 Higgsfield 应用音频…');
+      subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle('正在申请捕获 Higgsfield 应用音频…');
       const response=await chrome.runtime.sendMessage({type:'hf-start-tab-subtitles'}).catch(error=>({ok:false,error:error.message}));
       if(response?.ok){showSubtitle('音频捕获已启动；正在逐句识别');return;}
-      subtitleBroadcasting=false;if(subtitleButton)subtitleButton.textContent='中文字幕';showSubtitle(response?.error||'请点击右上角扩展图标启动字幕');return;
+      subtitleBroadcasting=false;setSubtitleSwitch(false);showSubtitle(response?.error||'请点击右上角扩展图标启动字幕');return;
     }
     if(subtitleCleanup){stopSubtitles();return;}
     const video=largestVideo();
     if(!video){
       if(window.top===window&&!fromFrame){
         if(subtitleBroadcasting){subtitleBroadcasting=false;broadcastSubtitle('stop');stopSubtitles();return;}
-        subtitleBroadcasting=true;if(subtitleButton)subtitleButton.textContent='停止字幕';showSubtitle('正在连接内嵌课程播放器…');broadcastSubtitle('start');return;
+        subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle('正在连接内嵌课程播放器…');broadcastSubtitle('start');return;
       }
       return;
     }
     try{if(window.top!==window)window.top.postMessage({type:'hf-zh-subtitle-found'},'*');}catch(_){ }
-    if(subtitleButton)subtitleButton.textContent='停止字幕';
+    setSubtitleSwitch(true);
     const tracks=[...video.textTracks];
     if(tracks.length){
       const track=tracks.find(item=>/^en/i.test(item.language||''))||tracks[0];track.mode='hidden';let active=true,last='';
@@ -485,7 +486,7 @@
     const shadow=panel.attachShadow({mode:'open'});
     shadow.innerHTML='<style>:host{all:initial}.box,.drawer{font:12px/1.55 -apple-system,"PingFang SC",sans-serif;background:#172014;color:#e7f1df;border:1px solid #526347;border-radius:12px;box-shadow:0 5px 24px #0007}.box{padding:10px 12px;max-width:420px}.box p{margin:0 0 7px}.drawer{position:fixed;right:16px;bottom:76px;width:min(500px,calc(100vw - 32px));height:min(780px,calc(100vh - 100px));padding:18px;overflow:auto}.drawer[hidden]{display:none}h2{font-size:20px;margin:0 0 4px}h3{font-size:14px;color:#b9e98d;margin:0 0 6px}section{border-top:1px solid #34432a;padding:12px 0}.analysis-group{display:block;border-left:2px solid #526347;padding-left:9px;margin:7px 0}.analysis-group strong{display:block;color:#dfead8}ul{margin:6px 0;padding-left:20px}li{margin:4px 0}button{font:inherit;color:#e9f6dc;background:#34432a;border:0;border-radius:6px;padding:6px 9px;cursor:pointer;margin:2px}button.primary{background:#b9e98d;color:#172014}button:disabled{opacity:.5}textarea{box-sizing:border-box;width:100%;min-height:70px;margin:8px 0;background:#0d120c;color:#eef5e9;border:1px solid #526347;border-radius:8px;padding:9px;font:12px/1.5 inherit}.muted{color:#99a990}.actions{display:flex;flex-wrap:wrap;gap:3px;margin:8px 0}</style><div class="drawer" id="drawer" hidden><button id="close" style="float:right">关闭</button><h2>Community 项目助手</h2><p class="muted">提炼当前 Higgsfield Project，沉淀为可复用影视工作流。</p><div class="actions"><button class="primary" data-task="summary">快速提炼</button><button data-task="workflow">工作流还原</button><button data-task="migrate">迁移到 TapNow</button></div><textarea id="question" placeholder="针对当前项目提问，例如：它如何保持角色和空间连续性？"></textarea><button data-task="ask">询问当前项目</button><p id="assistantStatus" class="muted"></p><div id="analysis"></div><div id="resultActions" class="actions" hidden><button id="saveCard">保存知识卡</button><button id="copyResult">复制 Markdown</button><button id="exportMd">导出 Markdown</button><button id="exportJson">导出 JSON</button></div></div><div class="box"><p role="status"></p><button class="primary" id="assistant">AI 项目助手</button><button id="mode"></button><button id="scan">重新扫描</button><button id="full">强制全局翻译</button><button id="settings">设置</button></div>';
     const assistantButton=shadow.querySelector('#assistant');
-    assistantButton.insertAdjacentHTML('afterend','<button id="subtitles">中文字幕</button>');
+    assistantButton.insertAdjacentHTML('afterend','<button id="subtitles" aria-pressed="false">字幕翻译：关</button>');
     subtitleButton=shadow.querySelector('#subtitles');subtitleButton.insertAdjacentHTML('afterend','<button id="subtitleOutput"></button>');
     status=shadow.querySelector('p');modeButton=shadow.querySelector('#mode');subtitleOutputButton=shadow.querySelector('#subtitleOutput');subtitleButton.onclick=toggleSubtitles;refreshSubtitleOutputButton();
     subtitleOutputButton.onclick=()=>{settings.subtitleOutputMode=settings.subtitleOutputMode==='english'?'chinese':'english';refreshSubtitleOutputButton();chrome.storage.local.set({subtitleOutputMode:settings.subtitleOutputMode});};
@@ -508,7 +509,7 @@
     try{if(panel.showPopover&&!panel.matches(':popover-open'))panel.showPopover();}catch(_){ }
   }
   chrome.runtime.onMessage.addListener((message,sender,reply)=>{
-    if(message?.type==='hf-subtitle-update'){if(message.outputMode&&message.outputMode!==settings.subtitleOutputMode){reply({ok:true,staleMode:true});return;}const sequence=Number(message.sequence);if(Number.isFinite(sequence)&&sequence<lastSubtitleSequence){reply({ok:true,stale:true});return;}if(Number.isFinite(sequence))lastSubtitleSequence=sequence;subtitleBroadcasting=true;if(subtitleButton)subtitleButton.textContent='停止字幕';showSubtitle(message.text,message.source);reply({ok:true});return;}
+    if(message?.type==='hf-subtitle-update'){if(message.outputMode&&message.outputMode!==settings.subtitleOutputMode){reply({ok:true,staleMode:true});return;}const sequence=Number(message.sequence);if(Number.isFinite(sequence)&&sequence<lastSubtitleSequence){reply({ok:true,stale:true});return;}if(Number.isFinite(sequence))lastSubtitleSequence=sequence;subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle(message.text,message.source);reply({ok:true});return;}
     if(message?.type==='hf-subtitle-status'){const sequence=Number(message.sequence);if(Number.isFinite(sequence)&&sequence<lastSubtitleSequence){reply({ok:true,stale:true});return;}showSubtitle(message.text);reply({ok:true});return;}
     if(message?.type==='hf-settings-changed'||message?.type==='hf-rescan'){
       chrome.storage.local.get(DEFAULTS).then(next=>{settings=next;refreshSubtitleOutputButton();scan();});reply({ok:true});
