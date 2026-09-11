@@ -8,7 +8,7 @@
 </head>
 <body>
 <main>
-  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.10.4</div>
+  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.10.5</div>
   <h1>从看懂项目，到拥有自己的工作流。</h1>
   <p class="intro">中英对照只是入口。助手会提炼 Higgsfield Community Project，并生成可复用、可迁移的专业 AI 影视工作流。</p>
 
@@ -103,7 +103,7 @@
     <p class="hint">硅基流动 DeepSeek 建议并发量 4；如果频繁出现 429 或频率限制，请降到 2。并发量只影响视频短句，不影响网页翻译和项目分析。</p>
     <p>学院播放器封装在应用内部。Apple 模式会在本机听写英文，只把短句交给翻译接口。首次使用请双击插件文件夹中的“安装Apple本地语音.command”，然后在视频播放页点击浏览器右上角的扩展图标。</p>
     <label class="field"><span>无字幕视频缓冲延迟（秒）</span><input id="subtitleDelaySeconds" type="number" min="4" max="30" step="1" value="8"></label>
-    <p class="hint">低延迟模式使用 16 kHz 单声道音频、约 0.32 秒句末停顿和两路并行识别。“仅英文识别”完全不请求大模型；“仅中文”会等译文完成后一次显示，不会中途替换。</p>
+    <p class="hint">低延迟模式使用 16 kHz 单声道音频和约 0.32 秒句末停顿。Apple 本地识别单通道有序运行，识别后的 DeepSeek 短句按所选并发量翻译。“仅英文识别”完全不请求大模型。</p>
   </section>
 
   <section>
