@@ -178,7 +178,12 @@
     }
     for(const documentRoot of new Set(documents)){
       richRoots.add(documentRoot);
-      const blocks=documentRoot.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,pre,code.rde-code,blockquote');
+      const semantic=[...documentRoot.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,pre,code.rde-code,blockquote')];
+      const leaves=[...documentRoot.querySelectorAll('div,[data-slate-node="element"]')].filter(block=>{
+        if(!eligible(block.innerText))return false;
+        return ![...block.children].some(child=>eligible(child.innerText));
+      });
+      const blocks=[...new Set([...semantic,...leaves])];
       if(!blocks.length){richRecord(documentRoot);continue;}
       for(const block of blocks){
         if(block.closest('li')&&block.tagName!=='LI')continue;
