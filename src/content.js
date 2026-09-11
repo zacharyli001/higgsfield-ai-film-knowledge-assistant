@@ -411,6 +411,9 @@
     subtitleCleanup?.();subtitleCleanup=null;subtitleOverlay?.remove();subtitleOverlay=null;lastSubtitleSequence=-1;setSubtitleSwitch(false);
   }
   async function toggleSubtitles(fromFrame=false){
+    // Audio is captured once from the top-level tab. Never start a second
+    // MediaRecorder inside an embedded player frame.
+    if(fromFrame)return;
     if(window.top===window&&!fromFrame){
       if(subtitleBroadcasting){subtitleBroadcasting=false;await chrome.runtime.sendMessage({type:'hf-stop-tab-subtitles'}).catch(()=>{});stopSubtitles();return;}
       subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle('正在申请捕获 Higgsfield 应用音频…');
@@ -449,7 +452,7 @@
       const context=new AudioContext(),analyser=context.createAnalyser(),source=context.createMediaStreamSource(audioStream);source.connect(analyser);analyser.fftSize=1024;
       const samples=new Uint8Array(analyser.fftSize),queue=[],cues=[];let active=true,processing=false,recorder=null,chunks=[],segmentStart=0,segmentMediaStart=startTime,speechSeen=false,silenceStart=0,stopping=false,visibleStarted=!usingLead,autoPaused=false;
       const dataUrl=blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});
-      const processQueue=async()=>{if(processing||!queue.length)return;processing=true;const item=queue.shift();if(!usingLead)showSubtitle('正在转写刚刚说完的一句…');try{const result=await chrome.runtime.sendMessage({type:'hf-transcribe-audio',dataUrl:await dataUrl(item.blob)});if(result?.skipped)return;if(!result?.ok)throw new Error(result?.error||'语音转写失败');if(usingLead)cues.push({start:item.start,end:item.end+1.8,text:result.text});else showSubtitle(result.text,result.source);}catch(error){if(/Extension context invalidated/i.test(String(error?.message||error))){stopSubtitles();return;}if(!/operation could not be completed|no speech|没有识别|没有听到/i.test(String(error?.message||error)))showSubtitle(error.message);}finally{processing=false;if(queue.length)processQueue();}};
+      const processQueue=async()=>{if(processing||!queue.length)return;processing=true;const item=queue.shift();try{const result=await chrome.runtime.sendMessage({type:'hf-transcribe-audio',dataUrl:await dataUrl(item.blob)});if(result?.skipped)return;if(!result?.ok)throw new Error(result?.error||'语音转写失败');if(usingLead)cues.push({start:item.start,end:item.end+1.8,text:result.text});else showSubtitle(result.text,result.source);}catch(error){if(/Extension context invalidated/i.test(String(error?.message||error))){stopSubtitles();return;}if(!/operation could not be completed|no speech|没有识别|没有听到/i.test(String(error?.message||error)))showSubtitle(error.message);}finally{processing=false;if(queue.length)processQueue();}};
       const startSegment=()=>{
         if(!active)return;chunks=[];speechSeen=false;silenceStart=0;stopping=false;segmentStart=performance.now();segmentMediaStart=captureVideo.currentTime;recorder=new MediaRecorder(audioStream,mime?{mimeType:mime}:undefined);
         recorder.ondataavailable=event=>{if(event.data.size)chunks.push(event.data);};
@@ -476,7 +479,7 @@
   }
   window.addEventListener('message',event=>{
     if(event.data?.type==='hf-zh-subtitle-frame'){
-      if(event.data.action==='stop')stopSubtitles();else if(event.data.action==='start')toggleSubtitles(true);else if(event.data.action==='display')showSubtitle(event.data.text,event.data.source,false);
+      if(event.data.action==='stop')stopSubtitles();else if(event.data.action==='display')showSubtitle(event.data.text,event.data.source,false);
     }
     if(window.top===window&&event.data?.type==='hf-zh-subtitle-found')showSubtitle('已连接课程视频；正在按句末停顿切分并翻译');
   });
