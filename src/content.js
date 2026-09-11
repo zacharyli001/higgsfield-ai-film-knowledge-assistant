@@ -1,18 +1,18 @@
 (() => {
   'use strict';
 
-  const DEFAULTS={enabled:true,displayMode:'bilingual',translationEngine:'local'};
+  const DEFAULTS={enabled:true,displayMode:'bilingual',translationEngine:'local',translationScope:'full'};
   const dictionary=globalThis.HF_ZH_DICTIONARY || {};
-  const records=new Set(), textIndex=new WeakMap(), attrIndex=new WeakMap(), codeIndex=new WeakMap();
+  const records=new Set(), textIndex=new WeakMap(), attrIndex=new WeakMap(), codeIndex=new WeakMap(), richIndex=new WeakMap(),richRoots=new WeakSet();
   const roots=new Map(), pending=new Map(), cache=new Map();
   const attributes=['title','placeholder','aria-label','alt'];
   const blockedSelector='script,style,noscript,textarea,input,select,[contenteditable]:not([contenteditable="false"]),[data-hf-zh-ui]';
-  let settings={...DEFAULTS},busy=false,waiting=false,error='',generation=0,timer,panel,status,modeButton,lastAnalysis=null,lastTask='summary';
+  let settings={...DEFAULTS},busy=false,waiting=false,error='',generation=0,timer,panel,status,modeButton,lastAnalysis=null,lastTask='summary',forceFull=false;
 
   const normalized=text=>text.trim().replace(/\s+/g,' ').replace(/[.…]+$/,'').toLowerCase();
   function eligible(value) {
     const text=String(value||'').trim();
-    return /[a-zA-Z]{2}/.test(text)
+    return /[a-zA-Z]/.test(text)
       && !/^(https?:\/\/|www\.|\S+@\S+\.\S+)/i.test(text)
       && !/^(higgsfield|chrome|youtube|instagram|tiktok|discord|4k|1080p)$/i.test(text);
   }
@@ -22,6 +22,17 @@
       current=current.parentElement || current.getRootNode()?.host;
     }
     return false;
+  }
+  function visible(element){
+    if(!element?.isConnected||element.closest?.('[hidden],[aria-hidden="true"]'))return false;
+    const style=getComputedStyle(element);
+    return style.display!=='none'&&style.visibility!=='hidden'&&Number(style.opacity)!==0;
+  }
+  function nearViewport(record){
+    const element=record.kind==='text'?record.node.parentElement:record.node;
+    if(!visible(element))return false;
+    const rect=element.getBoundingClientRect();
+    return rect.bottom>=-1200&&rect.top<=innerHeight+1200;
   }
   function codeContainer(node) {
     const parent=node.nodeType===3?node.parentElement:node;
@@ -38,7 +49,7 @@
   function removeTranslation(record) {
     record.translation?.remove();
     record.translation=null;
-    if(record.kind==='code' && record.hidden) {
+    if((record.kind==='code'||record.kind==='rich') && record.hidden) {
       record.node.style.display=record.previousDisplay;
       record.hidden=false;
     }
@@ -48,11 +59,11 @@
       record.translation.textContent=text;
       return record.translation;
     }
-    const el=document.createElement(record.kind==='code'?'div':'span');
+    const el=document.createElement(record.kind==='code'||record.kind==='rich'?'div':'span');
     el.setAttribute('data-hf-zh-ui','translation');
     el.className=record.block?'hf-zh-translation hf-zh-block':'hf-zh-translation hf-zh-inline';
     el.textContent=text;
-    if(record.kind==='code') record.node.insertAdjacentElement('afterend',el);
+    if(record.kind==='code'||record.kind==='rich') record.node.insertAdjacentElement('afterend',el);
     else record.node.parentNode?.insertBefore(el,record.node.nextSibling);
     record.translation=el;
     return el;
@@ -74,7 +85,7 @@
       record.node.setAttribute(record.attribute,value);
       return;
     }
-    if(record.kind==='code') {
+    if(record.kind==='code'||record.kind==='rich') {
       const translated=createTranslation(record,record.chinese);
       translated.style.display='block';
       if(settings.displayMode==='zh') {
@@ -100,12 +111,13 @@
     const known=dictionary[normalized(source)] || cache.get(source);
     if(known) { apply(record,known); return; }
     if(record.failed || record.queued) return;
+    if(settings.translationEngine==='ai'&&settings.translationScope==='viewport'&&!forceFull&&!nearViewport(record))return;
     if(!pending.has(source)) pending.set(source,new Set());
     pending.get(source).add(record);record.queued=true;
   }
   function textRecord(node) {
     const text=node.nodeValue;
-    if(!text || !eligible(text) || blocked(node.parentElement) || codeContainer(node)) return;
+    if(!text || !eligible(text) || blocked(node.parentElement) || codeContainer(node) || inRichDocument(node.parentElement)) return;
     let record=textIndex.get(node);
     if(record && (text===record.original || text===record.applied)) {
       if(record.chinese) apply(record,record.chinese); else queue(record);
@@ -119,7 +131,8 @@
   }
   function attributeRecord(node,attribute) {
     const text=node.getAttribute(attribute);
-    if(!text || !eligible(text) || blocked(node)) return;
+    const safeInputAttribute=node.matches?.('input,textarea,select,[contenteditable]')&&attributes.includes(attribute);
+    if(!text || !eligible(text) || (blocked(node)&&!safeInputAttribute)) return;
     let map=attrIndex.get(node);if(!map){map=new Map();attrIndex.set(node,map);}
     let record=map.get(attribute);
     if(record && (text===record.original || text===record.applied)) {
@@ -141,6 +154,33 @@
     const record={kind:'code',node,original:text,applied:null,chinese:null,translation:null,queued:false,failed:false,block:true,hidden:false,previousDisplay:''};
     codeIndex.set(node,record);records.add(record);queue(record);
   }
+  function inRichDocument(element){
+    for(let current=element;current;current=current.parentElement||current.getRootNode()?.host)if(richRoots.has(current))return true;
+    return false;
+  }
+  function richRecord(node){
+    const text=node.innerText?.trim();
+    if(!eligible(text))return;
+    let record=richIndex.get(node);
+    if(record&&text===record.original){if(record.chinese)apply(record,record.chinese);else queue(record);return;}
+    if(record){restore(record);records.delete(record);}
+    record={kind:'rich',node,original:text,applied:null,chinese:null,translation:null,queued:false,failed:false,block:true,hidden:false,previousDisplay:''};
+    richIndex.set(node,record);records.add(record);queue(record);
+  }
+  function scanRichDocuments(root){
+    const documents=[];
+    if(root.nodeType===1&&root.matches?.('.published-project-rich-document .rde-content[aria-readonly="true"],.rde-content[role="textbox"][contenteditable="false"]'))documents.push(root);
+    if(root.querySelectorAll)documents.push(...root.querySelectorAll('.published-project-rich-document .rde-content[aria-readonly="true"],.rde-content[role="textbox"][contenteditable="false"]'));
+    for(const documentRoot of documents){
+      richRoots.add(documentRoot);
+      const blocks=documentRoot.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,pre,code.rde-code,blockquote');
+      for(const block of blocks){
+        if(block.closest('li')&&block.tagName!=='LI')continue;
+        if(block.closest('pre')&&block.tagName!=='PRE')continue;
+        richRecord(block);
+      }
+    }
+  }
   function schedule(){if(!timer)timer=setTimeout(()=>{timer=null;scan();},240);}
   function observe(root) {
     if(roots.has(root)) return;
@@ -150,11 +190,13 @@
   }
   function scanRoot(root) {
     observe(root);
+    scanRichDocuments(root);
     const handledCode=new Set();
     const walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT);
     let node;
     while((node=walker.nextNode())) {
       if(node.nodeType===3) {
+        if(inRichDocument(node.parentElement))continue;
         const code=codeContainer(node);
         if(code) {if(!handledCode.has(code)){handledCode.add(code);codeRecord(code);}}
         else textRecord(node);
@@ -183,7 +225,13 @@
   async function flush() {
     if(busy||waiting||!settings.enabled||settings.displayMode==='original'||!pending.size)return;
     busy=true;const version=generation;
-    const batch=[...pending.entries()].slice(0,8);
+    const batch=[];let total=0;
+    for(const entry of pending.entries()){
+      const length=entry[0].length;
+      if(batch.length&&total+length>12000)break;
+      batch.push(entry);total+=length;
+      if(batch.length>=20)break;
+    }
     for(const [source] of batch)pending.delete(source);
     try {
       const type=settings.translationEngine==='ai'?'hf-ai-translate':'hf-local-translate';
@@ -292,10 +340,11 @@
     if(window.top!==window)return;
     panel=document.createElement('div');panel.setAttribute('data-hf-zh-ui','panel');panel.style.cssText='position:fixed;bottom:16px;right:16px;z-index:2147483647';
     const shadow=panel.attachShadow({mode:'open'});
-    shadow.innerHTML='<style>:host{all:initial}.box,.drawer{font:12px/1.55 -apple-system,"PingFang SC",sans-serif;background:#172014;color:#e7f1df;border:1px solid #526347;border-radius:12px;box-shadow:0 5px 24px #0007}.box{padding:10px 12px;max-width:330px}.box p{margin:0 0 7px}.drawer{position:fixed;right:16px;bottom:76px;width:min(500px,calc(100vw - 32px));height:min(780px,calc(100vh - 100px));padding:18px;overflow:auto}.drawer[hidden]{display:none}h2{font-size:20px;margin:0 0 4px}h3{font-size:14px;color:#b9e98d;margin:0 0 6px}section{border-top:1px solid #34432a;padding:12px 0}.analysis-group{display:block;border-left:2px solid #526347;padding-left:9px;margin:7px 0}.analysis-group strong{display:block;color:#dfead8}ul{margin:6px 0;padding-left:20px}li{margin:4px 0}button{font:inherit;color:#e9f6dc;background:#34432a;border:0;border-radius:6px;padding:6px 9px;cursor:pointer;margin:2px}button.primary{background:#b9e98d;color:#172014}button:disabled{opacity:.5}textarea{box-sizing:border-box;width:100%;min-height:70px;margin:8px 0;background:#0d120c;color:#eef5e9;border:1px solid #526347;border-radius:8px;padding:9px;font:12px/1.5 inherit}.muted{color:#99a990}.actions{display:flex;flex-wrap:wrap;gap:3px;margin:8px 0}</style><div class="drawer" id="drawer" hidden><button id="close" style="float:right">关闭</button><h2>Community 项目助手</h2><p class="muted">提炼当前 Higgsfield Project，沉淀为可复用影视工作流。</p><div class="actions"><button class="primary" data-task="summary">快速提炼</button><button data-task="workflow">工作流还原</button><button data-task="migrate">迁移到 TapNow</button></div><textarea id="question" placeholder="针对当前项目提问，例如：它如何保持角色和空间连续性？"></textarea><button data-task="ask">询问当前项目</button><p id="assistantStatus" class="muted"></p><div id="analysis"></div><div id="resultActions" class="actions" hidden><button id="saveCard">保存知识卡</button><button id="copyResult">复制 Markdown</button><button id="exportMd">导出 Markdown</button><button id="exportJson">导出 JSON</button></div></div><div class="box"><p role="status"></p><button class="primary" id="assistant">AI 项目助手</button><button id="mode"></button><button id="scan">重新翻译</button><button id="settings">设置</button></div>';
+    shadow.innerHTML='<style>:host{all:initial}.box,.drawer{font:12px/1.55 -apple-system,"PingFang SC",sans-serif;background:#172014;color:#e7f1df;border:1px solid #526347;border-radius:12px;box-shadow:0 5px 24px #0007}.box{padding:10px 12px;max-width:420px}.box p{margin:0 0 7px}.drawer{position:fixed;right:16px;bottom:76px;width:min(500px,calc(100vw - 32px));height:min(780px,calc(100vh - 100px));padding:18px;overflow:auto}.drawer[hidden]{display:none}h2{font-size:20px;margin:0 0 4px}h3{font-size:14px;color:#b9e98d;margin:0 0 6px}section{border-top:1px solid #34432a;padding:12px 0}.analysis-group{display:block;border-left:2px solid #526347;padding-left:9px;margin:7px 0}.analysis-group strong{display:block;color:#dfead8}ul{margin:6px 0;padding-left:20px}li{margin:4px 0}button{font:inherit;color:#e9f6dc;background:#34432a;border:0;border-radius:6px;padding:6px 9px;cursor:pointer;margin:2px}button.primary{background:#b9e98d;color:#172014}button:disabled{opacity:.5}textarea{box-sizing:border-box;width:100%;min-height:70px;margin:8px 0;background:#0d120c;color:#eef5e9;border:1px solid #526347;border-radius:8px;padding:9px;font:12px/1.5 inherit}.muted{color:#99a990}.actions{display:flex;flex-wrap:wrap;gap:3px;margin:8px 0}</style><div class="drawer" id="drawer" hidden><button id="close" style="float:right">关闭</button><h2>Community 项目助手</h2><p class="muted">提炼当前 Higgsfield Project，沉淀为可复用影视工作流。</p><div class="actions"><button class="primary" data-task="summary">快速提炼</button><button data-task="workflow">工作流还原</button><button data-task="migrate">迁移到 TapNow</button></div><textarea id="question" placeholder="针对当前项目提问，例如：它如何保持角色和空间连续性？"></textarea><button data-task="ask">询问当前项目</button><p id="assistantStatus" class="muted"></p><div id="analysis"></div><div id="resultActions" class="actions" hidden><button id="saveCard">保存知识卡</button><button id="copyResult">复制 Markdown</button><button id="exportMd">导出 Markdown</button><button id="exportJson">导出 JSON</button></div></div><div class="box"><p role="status"></p><button class="primary" id="assistant">AI 项目助手</button><button id="mode"></button><button id="scan">重新扫描</button><button id="full">强制全局翻译</button><button id="settings">设置</button></div>';
     status=shadow.querySelector('p');modeButton=shadow.querySelector('#mode');
     modeButton.onclick=()=>chrome.storage.local.set({displayMode:settings.displayMode==='bilingual'?'zh':'bilingual'});
-    shadow.querySelector('#scan').onclick=resetTranslations;
+    shadow.querySelector('#scan').onclick=()=>{forceFull=false;resetTranslations();};
+    shadow.querySelector('#full').onclick=()=>{forceFull=true;resetTranslations();};
     shadow.querySelector('#settings').onclick=()=>chrome.runtime.sendMessage({type:'hf-open'});
     const drawer=shadow.querySelector('#drawer');shadow.querySelector('#assistant').onclick=()=>drawer.hidden=!drawer.hidden;shadow.querySelector('#close').onclick=()=>drawer.hidden=true;
     drawer.querySelectorAll('[data-task]').forEach(button=>button.onclick=()=>runAssistant(button.dataset.task,drawer));
@@ -312,7 +361,7 @@
   });
   chrome.storage.onChanged.addListener((changes,area)=>{
     if(area==='local'){
-      const affectsTranslation=['translationEngine','provider','model','endpoint','glossary','preservePromptKeywords'].some(key=>changes[key]);
+      const affectsTranslation=['translationEngine','translationScope','provider','model','endpoint','glossary','preservePromptKeywords'].some(key=>changes[key]);
       const affectsDisplay=['enabled','displayMode'].some(key=>changes[key]);
       if(affectsTranslation||affectsDisplay) chrome.storage.local.get(DEFAULTS).then(next=>{
         settings=next;

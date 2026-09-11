@@ -4,6 +4,7 @@ const DEFAULTS = {
   enabled: true,
   displayMode: 'bilingual',
   translationEngine: 'local',
+  translationScope: 'full',
   provider: 'openrouter',
   apiProtocol: 'openai_chat',
   endpoint: 'https://openrouter.ai/api/v1/chat/completions',
@@ -35,6 +36,7 @@ function formConfig() {
     enabled: $('enabled').checked,
     displayMode: $('displayMode').value,
     translationEngine: $('translationEngine').value,
+    translationScope: $('translationScope').value,
     provider: $('provider').value,
     apiProtocol: $('apiProtocol').value,
     endpoint: $('endpoint').value.trim(),
@@ -89,6 +91,7 @@ async function loadConfig() {
 $('provider').addEventListener('change', () => {
   const preset = PRESETS[$('provider').value];
   if (preset) {
+    $('translationEngine').value = 'ai';
     $('endpoint').value = preset.endpoint;
     $('model').value = preset.model;
     $('apiProtocol').value = preset.apiProtocol;
@@ -97,7 +100,10 @@ $('provider').addEventListener('change', () => {
 
 $('save').addEventListener('click', async () => {
   $('save').disabled = true;
-  try { await saveConfig(); }
+  try {
+    $('translationEngine').value = 'ai';
+    await saveConfig();
+  }
   catch (error) { $('apiStatus').textContent = `保存失败：${error.message}`; }
   finally { $('save').disabled = false; }
 });
@@ -112,13 +118,16 @@ $('test').addEventListener('click', async () => {
     if (!allowed) throw new Error('未获得该 API 域名的访问权限');
     const result = await chrome.runtime.sendMessage({type:'hf-test-api',config});
     if (!result?.ok) throw new Error(result?.error || '接口没有返回结果');
-    $('apiStatus').textContent = `测试成功：${result.text}`;
+    $('translationEngine').value = 'ai';
+    await chrome.storage.local.set({...config,translationEngine:'ai'});
+    await notifyPages();
+    $('apiStatus').textContent = `测试成功，已自动启用第三方 AI：${result.text}`;
   } catch (error) {
     $('apiStatus').textContent = `测试失败：${error.message}`;
   } finally { $('test').disabled = false; }
 });
 
-for (const id of ['enabled','displayMode','translationEngine']) {
+for (const id of ['enabled','displayMode','translationEngine','translationScope']) {
   $(id).addEventListener('change', async () => {
     try { await saveConfig(false); }
     catch (error) { $('apiStatus').textContent = `设置未应用：${error.message}`; }

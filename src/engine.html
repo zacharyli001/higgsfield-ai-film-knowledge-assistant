@@ -8,7 +8,7 @@
 </head>
 <body>
 <main>
-  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.0</div>
+  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.2</div>
   <h1>从看懂项目，到拥有自己的工作流。</h1>
   <p class="intro">中英对照只是入口。助手会提炼 Higgsfield Community Project，并生成可复用、可迁移的专业 AI 影视工作流。</p>
 
@@ -29,9 +29,15 @@
           <option value="local">Chrome 本地翻译</option>
         </select>
       </label>
+      <label class="field"><span>AI 翻译范围</span>
+        <select id="translationScope">
+          <option value="full">全局强制翻译（默认）</option>
+          <option value="viewport">当前阅读区域（节省 Token）</option>
+        </select>
+      </label>
     </div>
     <label class="check"><input id="enabled" type="checkbox" checked> 在 Higgsfield 自动运行</label>
-    <p class="hint">中英对照会保留提示词中的英文、颜色高亮和 @标签，并在代码块下方生成中文译文。</p>
+    <p class="hint">“全局强制翻译”会扫描当前 DOM 中所有英文，并持续处理随后展开或加载的内容；图片和视频画面内文字除外。</p>
   </section>
 
   <section id="aiSection">
