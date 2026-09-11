@@ -382,16 +382,21 @@
       const ar=a.getBoundingClientRect(),br=b.getBoundingClientRect();return br.width*br.height-ar.width*ar.height;
     })[0];
   }
-  function broadcastSubtitle(action){
-    const visit=win=>{for(let index=0;index<win.frames.length;index++){const child=win.frames[index];try{child.postMessage({type:'hf-zh-subtitle-frame',action},'*');visit(child);}catch(_){ }}};visit(window);
+  function broadcastSubtitle(action,payload={}){
+    const visit=win=>{for(let index=0;index<win.frames.length;index++){const child=win.frames[index];try{child.postMessage({type:'hf-zh-subtitle-frame',action,...payload},'*');visit(child);}catch(_){ }}};visit(window);
   }
-  function showSubtitle(text,source=''){
+  function raiseSubtitle(){
+    if(!subtitleOverlay?.isConnected)return;
+    try{if(subtitleOverlay.matches(':popover-open'))subtitleOverlay.hidePopover();document.documentElement.append(subtitleOverlay);subtitleOverlay.showPopover?.();}catch(_){document.documentElement.append(subtitleOverlay);}
+  }
+  function showSubtitle(text,source='',relay=true){
     if(!subtitleOverlay){
       subtitleOverlay=document.createElement('div');subtitleOverlay.setAttribute('data-hf-zh-ui','subtitle');subtitleOverlay.setAttribute('popover','manual');
       subtitleOverlay.style.cssText='position:fixed!important;left:50%!important;bottom:9vh!important;top:auto!important;right:auto!important;transform:translateX(-50%)!important;z-index:2147483647!important;margin:0!important;width:min(900px,88vw)!important;padding:10px 18px!important;border:0!important;border-radius:10px!important;background:rgba(0,0,0,.78)!important;color:#fff!important;text-align:center!important;font:600 22px/1.45 -apple-system,"PingFang SC",sans-serif!important;text-shadow:0 2px 3px #000!important;white-space:pre-wrap!important';
       document.documentElement.append(subtitleOverlay);try{subtitleOverlay.showPopover?.();}catch(_){ }
     }
     subtitleOverlay.textContent=text||source||'正在识别语音…';
+    raiseSubtitle();if(relay&&window.top===window)broadcastSubtitle('display',{text,source});
   }
   async function translateCue(text){
     const response=await chrome.runtime.sendMessage({type:'hf-ai-translate',texts:[text]});
@@ -466,10 +471,11 @@
   }
   window.addEventListener('message',event=>{
     if(event.data?.type==='hf-zh-subtitle-frame'){
-      if(event.data.action==='stop')stopSubtitles();else if(event.data.action==='start')toggleSubtitles(true);
+      if(event.data.action==='stop')stopSubtitles();else if(event.data.action==='start')toggleSubtitles(true);else if(event.data.action==='display')showSubtitle(event.data.text,event.data.source,false);
     }
     if(window.top===window&&event.data?.type==='hf-zh-subtitle-found')showSubtitle('已连接课程视频；正在按句末停顿切分并翻译');
   });
+  for(const eventName of ['fullscreenchange','webkitfullscreenchange','webkitbeginfullscreen'])document.addEventListener(eventName,()=>{if(subtitleOverlay)setTimeout(raiseSubtitle,0);},true);
   function refreshSubtitleOutputButton(){if(!subtitleOutputButton)return;const labels={chinese:'字幕：仅中文',english:'字幕：仅英文',hybrid:'字幕：英→中'};subtitleOutputButton.textContent=labels[settings.subtitleOutputMode]||labels.chinese;}
   function mountPanel() {
     if(window.top!==window)return;
