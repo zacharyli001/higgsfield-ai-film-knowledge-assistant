@@ -4,6 +4,7 @@ const DEFAULTS={
   endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'google/gemini-3.1-flash-lite',apiKey:'',
   audioTranscriptionEndpoint:'https://api.siliconflow.cn/v1/audio/transcriptions',audioTranscriptionModel:'FunAudioLLM/SenseVoiceSmall',
   subtitleRecognizer:'apple',subtitleTranslator:'current',deeplEndpoint:'https://api-free.deepl.com/v2/translate',deeplApiKey:'',
+  subtitleConcurrency:4,
   glossary:'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords:true
 };

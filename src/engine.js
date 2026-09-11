@@ -13,6 +13,7 @@ const DEFAULTS = {
   audioTranscriptionEndpoint: 'https://api.siliconflow.cn/v1/audio/transcriptions',
   audioTranscriptionModel: 'FunAudioLLM/SenseVoiceSmall',
   subtitleRecognizer:'apple',subtitleTranslator:'current',deeplEndpoint:'https://api-free.deepl.com/v2/translate',deeplApiKey:'',
+  subtitleConcurrency:4,
   subtitleDelaySeconds: 8,
   glossary: 'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords: true
@@ -49,6 +50,7 @@ function formConfig() {
     audioTranscriptionEndpoint: $('audioTranscriptionEndpoint').value.trim(),
     audioTranscriptionModel: $('audioTranscriptionModel').value.trim(),
     subtitleRecognizer:$('subtitleRecognizer').value,subtitleTranslator:$('subtitleTranslator').value,deeplEndpoint:$('deeplEndpoint').value.trim(),deeplApiKey:$('deeplApiKey').value.trim(),
+    subtitleConcurrency:Math.max(1,Math.min(6,Number($('subtitleConcurrency').value)||4)),
     subtitleDelaySeconds: Math.max(4,Math.min(30,Number($('subtitleDelaySeconds').value)||8)),
     glossary: $('glossary').value,
     preservePromptKeywords: $('preservePromptKeywords').checked
@@ -137,7 +139,7 @@ $('test').addEventListener('click', async () => {
   } finally { $('test').disabled = false; }
 });
 
-for (const id of ['enabled','displayMode','translationEngine','translationScope','subtitleDelaySeconds','subtitleRecognizer','subtitleTranslator']) {
+for (const id of ['enabled','displayMode','translationEngine','translationScope','subtitleDelaySeconds','subtitleRecognizer','subtitleTranslator','subtitleConcurrency']) {
   $(id).addEventListener('change', async () => {
     try { await saveConfig(false); }
     catch (error) { $('apiStatus').textContent = `设置未应用：${error.message}`; }
