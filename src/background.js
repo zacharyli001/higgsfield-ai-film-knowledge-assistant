@@ -9,20 +9,16 @@ const DEFAULTS={
 };
 
 const NATIVE_HOST='ai.higgsfield.zh.speech';
-let nativePort=null,nativeSequence=0;
-const nativePending=new Map();
-function disconnectNative(error){
-  const reason=error||new Error(chrome.runtime.lastError?.message||'Apple 本地语音助手已断开');
-  for(const {reject} of nativePending.values())reject(reason);nativePending.clear();nativePort=null;
-}
-function connectNative(){
-  if(nativePort)return nativePort;
-  const port=chrome.runtime.connectNative(NATIVE_HOST);nativePort=port;
-  port.onMessage.addListener(message=>{const pending=nativePending.get(message?.id);if(!pending)return;nativePending.delete(message.id);message.ok?pending.resolve(message):pending.reject(new Error(message.error||'Apple 本地识别失败'));});
-  port.onDisconnect.addListener(()=>disconnectNative());return port;
+let nativeSequence=0;
+const nativeClients=[];
+function nativeClient(index){
+  if(nativeClients[index])return nativeClients[index];
+  const client={port:chrome.runtime.connectNative(NATIVE_HOST),pending:new Map(),busy:0};nativeClients[index]=client;
+  client.port.onMessage.addListener(message=>{const pending=client.pending.get(message?.id);if(!pending)return;client.pending.delete(message.id);client.busy=Math.max(0,client.busy-1);message.ok?pending.resolve(message):pending.reject(new Error(message.error||'Apple 本地识别失败'));});
+  client.port.onDisconnect.addListener(()=>{const reason=new Error(chrome.runtime.lastError?.message||'Apple 本地语音助手已断开');for(const pending of client.pending.values())pending.reject(reason);client.pending.clear();client.busy=0;nativeClients[index]=null;});return client;
 }
 function nativeRequest(payload,timeout=30000){
-  return new Promise((resolve,reject)=>{const id=++nativeSequence,port=connectNative(),timer=setTimeout(()=>{nativePending.delete(id);reject(new Error('Apple 本地识别超时'));},timeout);nativePending.set(id,{resolve:value=>{clearTimeout(timer);resolve(value);},reject:error=>{clearTimeout(timer);reject(error);}});try{port.postMessage({...payload,id});}catch(error){nativePending.delete(id);clearTimeout(timer);reject(error);}});
+  return new Promise((resolve,reject)=>{const id=++nativeSequence,clients=[nativeClient(0),nativeClient(1)],client=clients[0].busy<=clients[1].busy?clients[0]:clients[1],timer=setTimeout(()=>{if(client.pending.delete(id))client.busy=Math.max(0,client.busy-1);reject(new Error('Apple 本地识别超时'));},timeout);client.busy++;client.pending.set(id,{resolve:value=>{clearTimeout(timer);resolve(value);},reject:error=>{clearTimeout(timer);reject(error);}});try{client.port.postMessage({...payload,id});}catch(error){client.pending.delete(id);client.busy=Math.max(0,client.busy-1);clearTimeout(timer);reject(error);}});
 }
 async function transcribeApple(dataUrl){
   const match=String(dataUrl||'').match(/^data:([^,]*?);base64,([A-Za-z0-9+/=\s]+)$/);if(!match)throw new Error('音频数据无效');
@@ -247,7 +243,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   if(msg?.type==='hf-stop-tab-subtitles'){chrome.runtime.sendMessage({type:'hf-offscreen-stop',tabId:sender.tab?.id}).then(()=>reply({ok:true}),error=>reply({ok:false,error:error.message}));return true;}
   if(msg?.type==='hf-offscreen-audio-chunk'){
     if(typeof msg.dataUrl!=='string'||msg.dataUrl.length>12000000||!Number.isInteger(msg.tabId)){reply({ok:false,error:'字幕音频分段无效'});return;}
-    configWith().then(async config=>{const {source,text}=await subtitleFromAudio(msg.dataUrl,config);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text,source});return {ok:true};}).then(reply,error=>{chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-status',text:`字幕错误：${error.message}`}).catch(()=>{});reply({ok:false,error:error.message});});return true;
+    configWith().then(async config=>{const source=config.subtitleRecognizer==='apple'?await transcribeApple(msg.dataUrl):await transcribeAudio(msg.dataUrl,config);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text:source,source,sequence:msg.sequence,interim:true});const text=await translateSubtitle(source,config);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text,source,sequence:msg.sequence,interim:false});return {ok:true};}).then(reply,error=>{chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-status',text:`字幕错误：${error.message}`,sequence:msg.sequence}).catch(()=>{});reply({ok:false,error:error.message});});return true;
   }
   if(msg?.type==='hf-open'){openEngine().then(()=>reply({ok:true}),e=>reply({ok:false,error:e.message}));return true;}
   if(msg?.type==='hf-ai-translate'||msg?.type==='hf-translate'){

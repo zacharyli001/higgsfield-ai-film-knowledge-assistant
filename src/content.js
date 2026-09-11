@@ -8,7 +8,7 @@
   const attributes=['title','placeholder','aria-label','alt'];
   const blockedSelector='script,style,noscript,textarea,input,select,[contenteditable]:not([contenteditable="false"]),[data-hf-zh-ui]';
   const textBlockedSelector='script,style,noscript,textarea,input,select,[data-hf-zh-ui]';
-  let settings={...DEFAULTS},busy=false,waiting=false,error='',generation=0,timer,panel,status,modeButton,subtitleButton,subtitleOverlay,subtitleCleanup,subtitleBroadcasting=false,lastAnalysis=null,lastTask='summary',forceFull=false;
+  let settings={...DEFAULTS},busy=false,waiting=false,error='',generation=0,timer,panel,status,modeButton,subtitleButton,subtitleOverlay,subtitleCleanup,subtitleBroadcasting=false,lastSubtitleSequence=-1,lastAnalysis=null,lastTask='summary',forceFull=false;
 
   const normalized=text=>text.trim().replace(/\s+/g,' ').replace(/[.…]+$/,'').toLowerCase();
   function eligible(value) {
@@ -398,7 +398,7 @@
     if(!response?.results?.[0]?.text)throw new Error(response?.error||'字幕翻译失败');return response.results[0].text;
   }
   function stopSubtitles(){
-    subtitleCleanup?.();subtitleCleanup=null;subtitleOverlay?.remove();subtitleOverlay=null;if(subtitleButton)subtitleButton.textContent='中文字幕';
+    subtitleCleanup?.();subtitleCleanup=null;subtitleOverlay?.remove();subtitleOverlay=null;lastSubtitleSequence=-1;if(subtitleButton)subtitleButton.textContent='中文字幕';
   }
   async function toggleSubtitles(fromFrame=false){
     if(window.top===window&&!fromFrame&&location.pathname.startsWith('/academy/')){
@@ -499,8 +499,8 @@
     try{if(panel.showPopover&&!panel.matches(':popover-open'))panel.showPopover();}catch(_){ }
   }
   chrome.runtime.onMessage.addListener((message,sender,reply)=>{
-    if(message?.type==='hf-subtitle-update'){subtitleBroadcasting=true;if(subtitleButton)subtitleButton.textContent='停止字幕';showSubtitle(message.text,message.source);reply({ok:true});return;}
-    if(message?.type==='hf-subtitle-status'){showSubtitle(message.text);reply({ok:true});return;}
+    if(message?.type==='hf-subtitle-update'){const sequence=Number(message.sequence);if(Number.isFinite(sequence)&&sequence<lastSubtitleSequence){reply({ok:true,stale:true});return;}if(Number.isFinite(sequence))lastSubtitleSequence=sequence;subtitleBroadcasting=true;if(subtitleButton)subtitleButton.textContent='停止字幕';showSubtitle(message.text,message.source);reply({ok:true});return;}
+    if(message?.type==='hf-subtitle-status'){const sequence=Number(message.sequence);if(Number.isFinite(sequence)&&sequence<lastSubtitleSequence){reply({ok:true,stale:true});return;}showSubtitle(message.text);reply({ok:true});return;}
     if(message?.type==='hf-settings-changed'||message?.type==='hf-rescan'){
       chrome.storage.local.get(DEFAULTS).then(next=>{settings=next;scan();});reply({ok:true});
     }

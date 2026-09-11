@@ -8,7 +8,7 @@
 </head>
 <body>
 <main>
-  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.9.2</div>
+  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.10.0</div>
   <h1>从看懂项目，到拥有自己的工作流。</h1>
   <p class="intro">中英对照只是入口。助手会提炼 Higgsfield Community Project，并生成可复用、可迁移的专业 AI 影视工作流。</p>
 
@@ -100,7 +100,7 @@
     <p id="subtitleStatus" class="status" role="status"></p>
     <p>学院播放器封装在应用内部。Apple 模式会在本机听写英文，只把短句交给翻译接口。首次使用请双击插件文件夹中的“安装Apple本地语音.command”，然后在视频播放页点击浏览器右上角的扩展图标。</p>
     <label class="field"><span>无字幕视频缓冲延迟（秒）</span><input id="subtitleDelaySeconds" type="number" min="4" max="30" step="1" value="8"></label>
-    <p class="hint">无原字幕时，隐藏播放器会提前识别未来数秒的语音，正式视频延后播放；若接口暂时跟不上，视频会短暂停顿等待字幕。句末停顿约 0.65 秒切分，连续长句最长 8 秒。</p>
+    <p class="hint">低延迟模式使用 16 kHz 单声道音频、约 0.32 秒句末停顿和两路并行识别。英文听写会先显示，中文译文随后替换；迟到的旧字幕会自动丢弃。</p>
   </section>
 
   <section>
