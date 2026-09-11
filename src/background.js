@@ -5,6 +5,7 @@ const DEFAULTS={
   audioTranscriptionEndpoint:'https://api.siliconflow.cn/v1/audio/transcriptions',audioTranscriptionModel:'FunAudioLLM/SenseVoiceSmall',
   subtitleRecognizer:'apple',subtitleTranslator:'current',deeplEndpoint:'https://api-free.deepl.com/v2/translate',deeplApiKey:'',
   subtitleConcurrency:4,
+  subtitleOutputMode:'chinese',
   glossary:'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords:true
 };
@@ -244,7 +245,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   if(msg?.type==='hf-stop-tab-subtitles'){chrome.runtime.sendMessage({type:'hf-offscreen-stop',tabId:sender.tab?.id}).then(()=>reply({ok:true}),error=>reply({ok:false,error:error.message}));return true;}
   if(msg?.type==='hf-offscreen-audio-chunk'){
     if(typeof msg.dataUrl!=='string'||msg.dataUrl.length>12000000||!Number.isInteger(msg.tabId)){reply({ok:false,error:'字幕音频分段无效'});return;}
-    configWith().then(async config=>{const source=config.subtitleRecognizer==='apple'?await transcribeApple(msg.dataUrl):await transcribeAudio(msg.dataUrl,config);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text:source,source,sequence:msg.sequence,interim:true});const text=await translateSubtitle(source,config);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text,source,sequence:msg.sequence,interim:false});return {ok:true};}).then(reply,error=>{chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-status',text:`字幕错误：${error.message}`,sequence:msg.sequence}).catch(()=>{});reply({ok:false,error:error.message});});return true;
+    configWith().then(async config=>{const source=config.subtitleRecognizer==='apple'?await transcribeApple(msg.dataUrl):await transcribeAudio(msg.dataUrl,config),mode=config.subtitleOutputMode||'chinese';if(mode==='english'){await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text:source,source,sequence:msg.sequence,interim:false,outputMode:mode});return {ok:true,englishOnly:true};}if(mode==='hybrid')await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text:source,source,sequence:msg.sequence,interim:true,outputMode:mode});const text=await translateSubtitle(source,config);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text,source,sequence:msg.sequence,interim:false,outputMode:mode});return {ok:true};}).then(reply,error=>{chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-status',text:`字幕错误：${error.message}`,sequence:msg.sequence}).catch(()=>{});reply({ok:false,error:error.message});});return true;
   }
   if(msg?.type==='hf-open'){openEngine().then(()=>reply({ok:true}),e=>reply({ok:false,error:e.message}));return true;}
   if(msg?.type==='hf-ai-translate'||msg?.type==='hf-translate'){
