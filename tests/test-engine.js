@@ -1,0 +1,12 @@
+const fs=require('fs'),assert=require('assert');
+const js=fs.readFileSync('src/engine.js','utf8');
+const html=fs.readFileSync('src/engine.html','utf8');
+const manifest=JSON.parse(fs.readFileSync('src/manifest.json','utf8'));
+const ids=[...js.matchAll(/\$\('([^']+)'\)/g)].map(match=>match[1]);
+const missing=[...new Set(ids)].filter(id=>!html.includes(`id="${id}"`));
+assert.deepEqual(missing,[]);
+for(const provider of ['OpenRouter','DeepSeek','OpenAI','Anthropic','Gemini','Qwen','SiliconFlow','Moonshot','Groq','Mistral','Ollama'])assert.ok(html.includes(provider));
+for(const protocol of ['openai_chat','openai_responses','anthropic','gemini','ollama'])assert.ok(html.includes(`value="${protocol}"`));
+assert.equal(manifest.background?.service_worker,'background.js');
+assert.ok(manifest.content_scripts?.some(entry=>entry.matches.includes('https://higgsfield.ai/*')));
+console.log(`PASS 配置页 ${new Set(ids).size} 个控件、11 个服务预设和 5 类协议入口完整`);

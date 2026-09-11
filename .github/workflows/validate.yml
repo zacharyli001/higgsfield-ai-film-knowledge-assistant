@@ -1,0 +1,25 @@
+name: Validate extension
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          node --check src/content.js
+          node --check src/background.js
+          node --check src/offscreen.js
+          node --check src/engine.js
+      - name: Run extension tests
+        run: |
+          node tests/test-background.js
+          node tests/test-engine.js
+
