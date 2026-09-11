@@ -68,6 +68,11 @@
     return el;
   }
   function restore(record) {
+    if((record.kind==='code'||record.kind==='rich')&&record.replaced){
+      record.node.innerHTML=record.originalHTML;
+      record.node.removeAttribute('data-hf-zh-replaced');
+      record.replaced=false;
+    }
     if(record.kind==='text' && record.applied && record.node.nodeValue===record.applied) record.node.nodeValue=record.original;
     if(record.kind==='attribute' && record.applied && record.node.getAttribute(record.attribute)===record.applied) record.node.setAttribute(record.attribute,record.original);
     removeTranslation(record);
@@ -85,12 +90,22 @@
       return;
     }
     if(record.kind==='code'||record.kind==='rich') {
-      const translated=createTranslation(record,record.chinese);
-      translated.style.display='block';
       if(settings.displayMode==='zh') {
-        if(!record.hidden) { record.previousDisplay=record.node.style.display;record.node.style.display='none';record.hidden=true; }
-      } else if(record.hidden) {
-        record.node.style.display=record.previousDisplay;record.hidden=false;
+        removeTranslation(record);
+        if(!record.replaced){
+          record.originalHTML=record.node.innerHTML;
+          record.node.textContent=record.chinese;
+          record.node.setAttribute('data-hf-zh-replaced','true');
+          record.replaced=true;
+        }
+      } else {
+        if(record.replaced){
+          record.node.innerHTML=record.originalHTML;
+          record.node.removeAttribute('data-hf-zh-replaced');
+          record.replaced=false;
+        }
+        const translated=createTranslation(record,record.chinese);
+        translated.style.setProperty('display','block','important');
       }
       return;
     }
@@ -145,12 +160,12 @@
   function codeRecord(node) {
     if(codeIndex.has(node)) {
       const record=codeIndex.get(node),text=node.innerText;
-      if(text===record.original || record.hidden) {if(record.chinese) apply(record,record.chinese);else queue(record);return;}
+      if(text===record.original || record.hidden || record.replaced) {if(record.chinese) apply(record,record.chinese);else queue(record);return;}
       restore(record);records.delete(record);codeIndex.delete(node);
     }
     const text=node.innerText;
     if(!eligible(text)) return;
-    const record={kind:'code',node,original:text,applied:null,chinese:null,translation:null,queued:false,failed:false,block:true,hidden:false,previousDisplay:''};
+    const record={kind:'code',node,original:text,applied:null,chinese:null,translation:null,queued:false,failed:false,block:true,hidden:false,previousDisplay:'',replaced:false,originalHTML:null};
     codeIndex.set(node,record);records.add(record);queue(record);
   }
   function inRichDocument(element){
@@ -159,11 +174,11 @@
   }
   function richRecord(node){
     const text=node.innerText?.trim();
-    if(!eligible(text))return;
     let record=richIndex.get(node);
-    if(record&&text===record.original){if(record.chinese)apply(record,record.chinese);else queue(record);return;}
+    if(record&&(text===record.original||record.replaced)){if(record.chinese)apply(record,record.chinese);else queue(record);return;}
+    if(!eligible(text))return;
     if(record){restore(record);records.delete(record);}
-    record={kind:'rich',node,original:text,applied:null,chinese:null,translation:null,queued:false,failed:false,block:true,hidden:false,previousDisplay:''};
+    record={kind:'rich',node,original:text,applied:null,chinese:null,translation:null,queued:false,failed:false,block:true,hidden:false,previousDisplay:'',replaced:false,originalHTML:null};
     richIndex.set(node,record);records.add(record);queue(record);
   }
   function scanRichDocuments(root){
