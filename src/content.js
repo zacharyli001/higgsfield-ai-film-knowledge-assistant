@@ -419,7 +419,7 @@
       subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle('正在申请捕获 Higgsfield 应用音频…');
       const response=await chrome.runtime.sendMessage({type:'hf-start-tab-subtitles'}).catch(error=>({ok:false,error:error.message}));
       if(response?.ok){showSubtitle('音频捕获已启动；正在逐句识别');return;}
-      subtitleBroadcasting=false;setSubtitleSwitch(false);showSubtitle(response?.error||'请点击右上角扩展图标启动字幕');return;
+      subtitleBroadcasting=false;setSubtitleSwitch(false);if(response?.needsToolbar&&subtitleButton)subtitleButton.textContent='字幕：点顶部插件图标启动';showSubtitle(response?.error||'请点击 Chrome 顶部工具栏里的插件图标启动字幕');return;
     }
     if(subtitleCleanup){stopSubtitles();return;}
     const video=largestVideo();
@@ -517,7 +517,7 @@
   }
   chrome.runtime.onMessage.addListener((message,sender,reply)=>{
     if(message?.type==='hf-subtitle-update'){if(message.outputMode&&message.outputMode!==settings.subtitleOutputMode){reply({ok:true,staleMode:true});return;}const sequence=Number(message.sequence);if(Number.isFinite(sequence)&&sequence<lastSubtitleSequence){reply({ok:true,stale:true});return;}if(Number.isFinite(sequence))lastSubtitleSequence=sequence;subtitleBroadcasting=true;setSubtitleSwitch(true);showSubtitle(message.text,message.source);reply({ok:true});return;}
-    if(message?.type==='hf-subtitle-status'){const sequence=Number(message.sequence);if(Number.isFinite(sequence)&&sequence<lastSubtitleSequence){reply({ok:true,stale:true});return;}showSubtitle(message.text);reply({ok:true});return;}
+    if(message?.type==='hf-subtitle-status'){const sequence=Number(message.sequence);if(Number.isFinite(sequence)&&sequence<lastSubtitleSequence){reply({ok:true,stale:true});return;}if(typeof message.active==='boolean'){subtitleBroadcasting=message.active;setSubtitleSwitch(message.active);}showSubtitle(message.text);reply({ok:true});return;}
     if(message?.type==='hf-settings-changed'||message?.type==='hf-rescan'){
       chrome.storage.local.get(DEFAULTS).then(next=>{settings=next;refreshSubtitleOutputButton();scan();});reply({ok:true});
     }

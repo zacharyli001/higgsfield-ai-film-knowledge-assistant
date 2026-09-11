@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Higgsfield AI 影视知识助手",
-  "version": "3.10.7",
+  "version": "3.10.8",
   "description": "翻译、提炼和迁移 Higgsfield Community 的 AI 影视项目工作流。",
   "minimum_chrome_version": "138",
   "permissions": [
@@ -23,7 +23,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "打开 AI 影视知识助手设置"
+    "default_title": "在当前 Higgsfield 页面启动中文字幕"
   },
   "content_scripts": [
     {

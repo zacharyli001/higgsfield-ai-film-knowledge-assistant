@@ -46,12 +46,14 @@ async function ensureOffscreen(){
 }
 async function startTabSubtitles(tabId){
   await ensureOffscreen();const streamId=await chrome.tabCapture.getMediaStreamId({targetTabId:tabId});
-  return chrome.runtime.sendMessage({type:'hf-offscreen-start',streamId,tabId});
+  const response=await chrome.runtime.sendMessage({type:'hf-offscreen-start',streamId,tabId});
+  if(!response?.ok)throw new Error(response?.error||'标签页音频通道启动失败');
+  return response;
 }
 chrome.action.onClicked.addListener(async tab=>{
   if(tab?.id&&/^https:\/\/([^.]+\.)?higgsfield\.ai\//i.test(tab.url||'')){
-    try{await startTabSubtitles(tab.id);await chrome.tabs.sendMessage(tab.id,{type:'hf-subtitle-status',text:'标签页音频捕获已启动，正在逐句生成字幕'});}
-    catch(error){await chrome.tabs.sendMessage(tab.id,{type:'hf-subtitle-status',text:`字幕启动失败：${error.message}`}).catch(()=>{});}return;
+    try{await startTabSubtitles(tab.id);await chrome.tabs.sendMessage(tab.id,{type:'hf-subtitle-status',active:true,text:'字幕已开启 · Apple 本地识别正在监听英文'});}
+    catch(error){await chrome.tabs.sendMessage(tab.id,{type:'hf-subtitle-status',active:false,text:`字幕启动失败：${error.message}`}).catch(()=>{});}return;
   }
   openEngine();
 });
@@ -247,7 +249,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   if(sender.id!==chrome.runtime.id)return;
   if(msg?.type==='hf-start-tab-subtitles'){
     if(!sender.tab?.id){reply({ok:false,error:'无法确定当前 Higgsfield 标签页'});return;}
-    startTabSubtitles(sender.tab.id).then(()=>reply({ok:true}),error=>reply({ok:false,error:`请点击浏览器右上角的扩展图标启动字幕（Chrome 要求用户从扩展图标授权标签页录音）：${error.message}`}));return true;
+    startTabSubtitles(sender.tab.id).then(()=>reply({ok:true}),error=>reply({ok:false,needsToolbar:true,error:`请点击 Chrome 顶部工具栏里的 Higgsfield 插件图标完成音频授权：${error.message}`}));return true;
   }
   if(msg?.type==='hf-stop-tab-subtitles'){chrome.runtime.sendMessage({type:'hf-offscreen-stop',tabId:sender.tab?.id}).then(()=>reply({ok:true}),error=>reply({ok:false,error:error.message}));return true;}
   if(msg?.type==='hf-offscreen-audio-chunk'){

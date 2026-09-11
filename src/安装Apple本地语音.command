@@ -20,5 +20,5 @@ cat > "$HOSTS/ai.higgsfield.zh.speech.json" <<JSON
 JSON
 codesign --force --deep --sign - "$APP"
 "$APP/Contents/MacOS/AppleSpeechHost" --authorize
-echo "安装完成。请在弹出的窗口中允许语音识别，再重新加载 3.10.7 扩展。"
+echo "安装完成。请在弹出的窗口中允许语音识别，再重新加载 3.10.8 扩展。"
 read -k 1 "?按任意键关闭…"
