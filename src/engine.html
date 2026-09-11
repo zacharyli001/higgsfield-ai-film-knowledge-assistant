@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Higgsfield 中文助手 · 翻译设置</title>
+  <title>Higgsfield AI 影视知识助手 · 设置</title>
   <link rel="stylesheet" href="engine.css">
 </head>
 <body>
 <main>
-  <div class="tag">HIGGSFIELD · 中英对照助手 2.0</div>
-  <h1>读懂页面，也读懂提示词。</h1>
-  <p class="intro">保留英文原文，在下方显示专业中文。支持第三方 AI、Chrome 本地翻译和自定义术语库。</p>
+  <div class="tag">HIGGSFIELD · AI 影视知识助手 3.0</div>
+  <h1>从看懂项目，到拥有自己的工作流。</h1>
+  <p class="intro">中英对照只是入口。助手会提炼 Higgsfield Community Project，并生成可复用、可迁移的专业 AI 影视工作流。</p>
 
   <section>
     <span class="step">01 / 显示方式</span>
@@ -41,13 +41,31 @@
     <div class="grid two">
       <label class="field"><span>服务商</span>
         <select id="provider">
+          <option value="openrouter">OpenRouter（多模型聚合）</option>
           <option value="deepseek">DeepSeek</option>
           <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic Claude</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="qwen">阿里云百炼 / Qwen</option>
+          <option value="siliconflow">SiliconFlow</option>
+          <option value="moonshot">Moonshot / Kimi</option>
+          <option value="groq">Groq</option>
+          <option value="mistral">Mistral</option>
+          <option value="ollama">Ollama 本地模型</option>
           <option value="compatible">其他 OpenAI 兼容接口</option>
         </select>
       </label>
       <label class="field"><span>模型</span><input id="model" autocomplete="off"></label>
     </div>
+    <label class="field"><span>API 协议</span>
+      <select id="apiProtocol">
+        <option value="openai_chat">OpenAI Chat Completions</option>
+        <option value="openai_responses">OpenAI Responses</option>
+        <option value="anthropic">Anthropic Messages</option>
+        <option value="gemini">Gemini generateContent</option>
+        <option value="ollama">Ollama Chat</option>
+      </select>
+    </label>
     <label class="field"><span>接口地址</span><input id="endpoint" type="url" spellcheck="false"></label>
     <label class="field"><span>API Key</span><input id="apiKey" type="password" autocomplete="off" placeholder="sk-…"></label>
     <label class="check"><input id="preservePromptKeywords" type="checkbox" checked> 保留 CAMERA、LIGHTING、REFERENCES 等大写提示词标签，并补充中文释义</label>
@@ -60,7 +78,14 @@
   </section>
 
   <section>
-    <span class="step">03 / 专有名词库</span>
+    <span class="step">03 / Community 学习助手</span>
+    <h2>在项目页面直接提炼</h2>
+    <p>打开 Higgsfield Community 的任意 Project，点击右下角“AI 助手”。可以一键生成项目速读、专业工作流、TapNow 迁移方案，或针对当前项目提问。结果可保存为本地知识卡并导出 Markdown / JSON。</p>
+    <p class="hint">助手优先读取 About the project，同时纳入工具、提示词、制作阶段、失败案例和解决办法。它只分析当前公开展示的项目内容。</p>
+  </section>
+
+  <section>
+    <span class="step">04 / 专有名词库</span>
     <h2>固定译法与保护词</h2>
     <p>每行一条，格式为“英文 = 中文”。两边写相同内容即可保护品牌、人物名、@标签或模型名不被翻译。</p>
     <textarea id="glossary" rows="12" spellcheck="false" placeholder="Higgsfield = Higgsfield&#10;dolly-in = 推轨靠近&#10;@char_CB_Cal = @char_CB_Cal"></textarea>
@@ -72,8 +97,18 @@
     <p id="glossaryStatus" class="status" role="status"></p>
   </section>
 
+  <section>
+    <span class="step">05 / 个人知识库</span>
+    <h2>项目与工作流卡片</h2>
+    <p>在 Community 页面保存的提炼结果会集中在这里；同一项目与分析类型会自动更新，最多保留 100 张。</p>
+    <label class="field"><span>搜索项目、标签或摘要</span><input id="librarySearch" type="search" placeholder="例如：角色一致性、动作设计、黑色电影"></label>
+    <div class="actions"><button id="refreshLibrary" class="secondary">刷新知识库</button><button id="exportLibraryMd" class="secondary">导出全部 Markdown</button><button id="exportLibraryJson" class="secondary">导出全部 JSON</button></div>
+    <p id="libraryStatus" class="status" role="status"></p>
+    <div id="library"></div>
+  </section>
+
   <section id="localSection">
-    <span class="step">04 / 本地备用</span>
+    <span class="step">06 / 本地备用</span>
     <h2>Chrome 英文 → 简体中文</h2>
     <p>不发送网页文字，但译文连贯性和术语控制弱于 AI。首次使用可能需要下载语言包；启动后需保留此标签页。</p>
     <button id="start">启动本地翻译</button>
@@ -82,9 +117,12 @@
   </section>
 
   <section>
-    <span class="step">05 / 应用</span>
+    <span class="step">07 / 应用</span>
     <h2>让已打开的页面立即更新</h2>
-    <button id="rescan">重新翻译 Higgsfield 页面</button>
+    <div class="actions">
+      <button id="rescan">重新翻译 Higgsfield 页面</button>
+      <button id="reloadExtension" class="secondary">重新加载扩展</button>
+    </div>
     <p id="actionStatus" class="status" role="status"></p>
   </section>
 

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Higgsfield 中文助手",
-  "version": "2.0.0",
-  "description": "Higgsfield 全页中英对照翻译，支持第三方 AI API、提示词代码块和专有名词库。",
+  "name": "Higgsfield AI 影视知识助手",
+  "version": "3.0.0",
+  "description": "翻译、提炼和迁移 Higgsfield Community 的 AI 影视项目工作流。",
   "minimum_chrome_version": "138",
   "permissions": [
     "storage"
@@ -20,7 +20,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "打开中文翻译控制台"
+    "default_title": "打开 AI 影视知识助手设置"
   },
   "content_scripts": [
     {

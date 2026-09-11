@@ -4,16 +4,26 @@ const DEFAULTS = {
   enabled: true,
   displayMode: 'bilingual',
   translationEngine: 'local',
-  provider: 'deepseek',
-  endpoint: 'https://api.deepseek.com/chat/completions',
-  model: 'deepseek-v4-flash',
+  provider: 'openrouter',
+  apiProtocol: 'openai_chat',
+  endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+  model: 'google/gemini-3.1-flash-lite',
   apiKey: '',
   glossary: 'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords: true
 };
 const PRESETS = {
-  deepseek: {endpoint:'https://api.deepseek.com/chat/completions', model:'deepseek-v4-flash'},
-  openai: {endpoint:'https://api.openai.com/v1/chat/completions', model:'gpt-5-mini'}
+  openrouter:{apiProtocol:'openai_chat',endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'google/gemini-3.1-flash-lite'},
+  deepseek:{apiProtocol:'openai_chat',endpoint:'https://api.deepseek.com/chat/completions',model:'deepseek-v4-flash'},
+  openai:{apiProtocol:'openai_responses',endpoint:'https://api.openai.com/v1/responses',model:'gpt-5.5'},
+  anthropic:{apiProtocol:'anthropic',endpoint:'https://api.anthropic.com/v1/messages',model:'claude-sonnet-4-6'},
+  gemini:{apiProtocol:'gemini',endpoint:'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',model:'gemini-3.1-flash-lite'},
+  qwen:{apiProtocol:'openai_chat',endpoint:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',model:'qwen-plus'},
+  siliconflow:{apiProtocol:'openai_chat',endpoint:'https://api.siliconflow.cn/v1/chat/completions',model:'deepseek-ai/DeepSeek-V4-Flash'},
+  moonshot:{apiProtocol:'openai_chat',endpoint:'https://api.moonshot.cn/v1/chat/completions',model:'kimi-k2.5'},
+  groq:{apiProtocol:'openai_chat',endpoint:'https://api.groq.com/openai/v1/chat/completions',model:'openai/gpt-oss-120b'},
+  mistral:{apiProtocol:'openai_chat',endpoint:'https://api.mistral.ai/v1/chat/completions',model:'mistral-small-latest'},
+  ollama:{apiProtocol:'ollama',endpoint:'http://localhost:11434/api/chat',model:'qwen3:8b'}
 };
 const $ = id => document.getElementById(id);
 let translator = null;
@@ -26,6 +36,7 @@ function formConfig() {
     displayMode: $('displayMode').value,
     translationEngine: $('translationEngine').value,
     provider: $('provider').value,
+    apiProtocol: $('apiProtocol').value,
     endpoint: $('endpoint').value.trim(),
     model: $('model').value.trim(),
     apiKey: $('apiKey').value.trim(),
@@ -80,6 +91,7 @@ $('provider').addEventListener('change', () => {
   if (preset) {
     $('endpoint').value = preset.endpoint;
     $('model').value = preset.model;
+    $('apiProtocol').value = preset.apiProtocol;
   }
 });
 
@@ -95,7 +107,7 @@ $('test').addEventListener('click', async () => {
   $('apiStatus').textContent = '正在测试接口…';
   try {
     const config = formConfig();
-    if (!config.apiKey) throw new Error('请填写 API Key');
+    if (config.apiProtocol !== 'ollama' && !config.apiKey) throw new Error('请填写 API Key');
     const allowed = await requestEndpointPermission(config.endpoint);
     if (!allowed) throw new Error('未获得该 API 域名的访问权限');
     const result = await chrome.runtime.sendMessage({type:'hf-test-api',config});
@@ -146,6 +158,39 @@ $('exportGlossary').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   $('glossaryStatus').textContent = '术语库已导出。';
 });
+
+function cardMarkdown(card) {
+  function walk(value,depth=2) {
+    if(Array.isArray(value)) return value.map(item=>typeof item==='object'?walk(item,depth+1):`- ${item}`).join('\n');
+    if(value&&typeof value==='object') return Object.entries(value).map(([key,item])=>`${'#'.repeat(Math.min(depth,4))} ${key}\n\n${walk(item,depth+1)}`).join('\n\n');
+    return String(value??'');
+  }
+  return `# ${card.title}\n\n- 来源：${card.url}\n- 保存时间：${card.savedAt}\n- 分析类型：${card.task}\n\n${walk(card.result)}`;
+}
+function downloadFile(name,text,type='text/plain') {
+  const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([text],{type}));link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+}
+async function renderLibrary() {
+  const {knowledgeLibrary=[]}=await chrome.storage.local.get({knowledgeLibrary:[]});
+  const query=$('librarySearch').value.trim().toLowerCase(),root=$('library');root.textContent='';
+  const cards=knowledgeLibrary.filter(card=>JSON.stringify(card).toLowerCase().includes(query));
+  $('libraryStatus').textContent=`共 ${knowledgeLibrary.length} 张知识卡${query?`，匹配 ${cards.length} 张`:''}`;
+  for(const card of cards){
+    const article=document.createElement('article');article.className='library-card';
+    const h=document.createElement('h3'),link=document.createElement('a');link.href=card.url;link.target='_blank';link.textContent=card.title;h.append(link);article.append(h);
+    const meta=document.createElement('div');meta.className='meta';meta.textContent=`${new Date(card.savedAt).toLocaleString()} · ${card.task}`;article.append(meta);
+    if(card.result?.tags?.length){const tags=document.createElement('div');tags.className='tags';tags.textContent=card.result.tags.join(' · ');article.append(tags);}
+    if(card.result?.oneSentence){const summary=document.createElement('p');summary.className='summary';summary.textContent=card.result.oneSentence;article.append(summary);}
+    const exportButton=document.createElement('button');exportButton.className='secondary';exportButton.textContent='导出 Markdown';exportButton.onclick=()=>downloadFile(`${card.title}.md`,cardMarkdown(card),'text/markdown');article.append(exportButton);
+    const deleteButton=document.createElement('button');deleteButton.className='secondary';deleteButton.textContent='删除';deleteButton.onclick=async()=>{if(!confirm(`删除知识卡“${card.title}”？`))return;await chrome.storage.local.set({knowledgeLibrary:knowledgeLibrary.filter(item=>item.id!==card.id)});renderLibrary();};article.append(deleteButton);
+    root.append(article);
+  }
+}
+$('librarySearch').addEventListener('input',renderLibrary);
+$('refreshLibrary').addEventListener('click',renderLibrary);
+$('exportLibraryJson').addEventListener('click',async()=>{const {knowledgeLibrary=[]}=await chrome.storage.local.get({knowledgeLibrary:[]});downloadFile('higgsfield-影视知识库.json',JSON.stringify(knowledgeLibrary,null,2),'application/json');});
+$('exportLibraryMd').addEventListener('click',async()=>{const {knowledgeLibrary=[]}=await chrome.storage.local.get({knowledgeLibrary:[]});downloadFile('higgsfield-影视知识库.md',knowledgeLibrary.map(cardMarkdown).join('\n\n---\n\n'),'text/markdown');});
+chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.knowledgeLibrary)renderLibrary();});
 
 $('start').addEventListener('click', async () => {
   $('start').disabled = true;
@@ -213,10 +258,15 @@ chrome.runtime.onMessage.addListener((message,sender,reply) => {
 loadConfig().catch(error => {
   $('apiStatus').textContent = `读取设置失败：${error.message}`;
 });
+renderLibrary().catch(error=>{
+  $('libraryStatus').textContent=`读取知识库失败：${error.message}`;
+});
 
 $('rescan').addEventListener('click', async () => {
   const result=await notifyPages();
   $('actionStatus').textContent=result?.count ? `已通知 ${result.count} 个页面重新翻译。` : '没有找到已打开的 Higgsfield 页面。';
 });
 
-loadConfig();
+$('reloadExtension').addEventListener('click', () => {
+  chrome.runtime.reload();
+});
