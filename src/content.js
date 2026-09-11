@@ -422,16 +422,32 @@
     try{
       const stream=capture(),audio=stream.getAudioTracks();if(!audio.length)throw new Error('没有读取到视频音轨，请先开始播放并确认未静音');
       const audioStream=new MediaStream(audio),mime=['audio/webm;codecs=opus','audio/webm'].find(type=>MediaRecorder.isTypeSupported(type))||'';
-      const recorder=new MediaRecorder(audioStream,mime?{mimeType:mime}:undefined);let active=true,processing=false;
-      recorder.ondataavailable=async event=>{if(!active||processing||event.data.size<800)return;processing=true;showSubtitle('正在生成中文字幕…');try{const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(event.data);});const result=await chrome.runtime.sendMessage({type:'hf-transcribe-audio',dataUrl});if(!result?.ok)throw new Error(result?.error||'语音转写失败');showSubtitle(result.text,result.source);}catch(error){showSubtitle(error.message);}finally{processing=false;}};
-      recorder.start(12000);showSubtitle('字幕已启动，首段约 12–20 秒后出现');subtitleCleanup=()=>{active=false;if(recorder.state!=='inactive')recorder.stop();audioStream.getTracks().forEach(track=>track.stop());};
+      const context=new AudioContext(),analyser=context.createAnalyser(),source=context.createMediaStreamSource(audioStream);source.connect(analyser);analyser.fftSize=1024;
+      const samples=new Uint8Array(analyser.fftSize),queue=[];let active=true,processing=false,recorder=null,chunks=[],segmentStart=0,speechSeen=false,silenceStart=0,stopping=false;
+      const dataUrl=blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});
+      const processQueue=async()=>{if(processing||!queue.length)return;processing=true;const blob=queue.shift();showSubtitle('正在转写刚刚说完的一句…');try{const result=await chrome.runtime.sendMessage({type:'hf-transcribe-audio',dataUrl:await dataUrl(blob)});if(!result?.ok)throw new Error(result?.error||'语音转写失败');showSubtitle(result.text,result.source);}catch(error){showSubtitle(error.message);}finally{processing=false;if(queue.length)processQueue();}};
+      const startSegment=()=>{
+        if(!active)return;chunks=[];speechSeen=false;silenceStart=0;stopping=false;segmentStart=performance.now();recorder=new MediaRecorder(audioStream,mime?{mimeType:mime}:undefined);
+        recorder.ondataavailable=event=>{if(event.data.size)chunks.push(event.data);};
+        recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime||'audio/webm'});if(blob.size>800){if(queue.length>=6)queue.shift();queue.push(blob);processQueue();}startSegment();};
+        recorder.start();
+      };
+      const monitor=setInterval(()=>{
+        if(!active||!recorder||recorder.state!=='recording'||stopping)return;
+        analyser.getByteTimeDomainData(samples);let energy=0;for(const value of samples){const n=(value-128)/128;energy+=n*n;}const rms=Math.sqrt(energy/samples.length),now=performance.now(),elapsed=now-segmentStart;
+        if(rms>.018){speechSeen=true;silenceStart=0;}else if(speechSeen&&!silenceStart)silenceStart=now;
+        const sentenceEnded=speechSeen&&silenceStart&&now-silenceStart>650&&elapsed>1100;
+        if(sentenceEnded||elapsed>8000){stopping=true;recorder.stop();}
+      },100);
+      context.resume?.();startSegment();showSubtitle('逐句字幕已启动，句末停顿后约 1–3 秒开始转写');
+      subtitleCleanup=()=>{active=false;clearInterval(monitor);if(recorder?.state!=='inactive')recorder.stop();source.disconnect();context.close();audioStream.getTracks().forEach(track=>track.stop());};
     }catch(error){showSubtitle(error.message);setTimeout(stopSubtitles,4500);}
   }
   window.addEventListener('message',event=>{
     if(event.data?.type==='hf-zh-subtitle-frame'){
       if(event.data.action==='stop')stopSubtitles();else if(event.data.action==='start')toggleSubtitles(true);
     }
-    if(window.top===window&&event.data?.type==='hf-zh-subtitle-found')showSubtitle('已连接课程视频；播放后首段字幕约 12–20 秒出现');
+    if(window.top===window&&event.data?.type==='hf-zh-subtitle-found')showSubtitle('已连接课程视频；正在按句末停顿切分并翻译');
   });
   function mountPanel() {
     if(window.top!==window)return;
