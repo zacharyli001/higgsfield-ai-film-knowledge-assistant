@@ -12,6 +12,7 @@ const DEFAULTS = {
   apiKey: '',
   audioTranscriptionEndpoint: 'https://api.siliconflow.cn/v1/audio/transcriptions',
   audioTranscriptionModel: 'FunAudioLLM/SenseVoiceSmall',
+  subtitleRecognizer:'apple',subtitleTranslator:'current',deeplEndpoint:'https://api-free.deepl.com/v2/translate',deeplApiKey:'',
   subtitleDelaySeconds: 8,
   glossary: 'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords: true
@@ -47,6 +48,7 @@ function formConfig() {
     apiKey: $('apiKey').value.trim(),
     audioTranscriptionEndpoint: $('audioTranscriptionEndpoint').value.trim(),
     audioTranscriptionModel: $('audioTranscriptionModel').value.trim(),
+    subtitleRecognizer:$('subtitleRecognizer').value,subtitleTranslator:$('subtitleTranslator').value,deeplEndpoint:$('deeplEndpoint').value.trim(),deeplApiKey:$('deeplApiKey').value.trim(),
     subtitleDelaySeconds: Math.max(4,Math.min(30,Number($('subtitleDelaySeconds').value)||8)),
     glossary: $('glossary').value,
     preservePromptKeywords: $('preservePromptKeywords').checked
@@ -77,7 +79,8 @@ async function saveConfig(showStatus = true) {
     if (!config.endpoint || !config.model) throw new Error('请填写接口地址和模型名');
     const allowed = await requestEndpointPermission(config.endpoint);
     if (!allowed) throw new Error('未获得该 API 域名的访问权限');
-    if(config.audioTranscriptionEndpoint){const audioAllowed=await requestEndpointPermission(config.audioTranscriptionEndpoint);if(!audioAllowed)throw new Error('未获得语音转写 API 的访问权限');}
+    if(config.subtitleRecognizer==='online'&&config.audioTranscriptionEndpoint){const audioAllowed=await requestEndpointPermission(config.audioTranscriptionEndpoint);if(!audioAllowed)throw new Error('未获得语音转写 API 的访问权限');}
+    if(config.subtitleTranslator==='deepl'){if(!config.deeplApiKey)throw new Error('请填写 DeepL API Key');const deeplAllowed=await requestEndpointPermission(config.deeplEndpoint);if(!deeplAllowed)throw new Error('未获得 DeepL 接口的访问权限');}
   }
   await chrome.storage.local.set(config);
   await notifyPages();
@@ -134,12 +137,13 @@ $('test').addEventListener('click', async () => {
   } finally { $('test').disabled = false; }
 });
 
-for (const id of ['enabled','displayMode','translationEngine','translationScope','subtitleDelaySeconds']) {
+for (const id of ['enabled','displayMode','translationEngine','translationScope','subtitleDelaySeconds','subtitleRecognizer','subtitleTranslator']) {
   $(id).addEventListener('change', async () => {
     try { await saveConfig(false); }
     catch (error) { $('apiStatus').textContent = `设置未应用：${error.message}`; }
   });
 }
+$('testNative').addEventListener('click',async()=>{const button=$('testNative');button.disabled=true;$('subtitleStatus').textContent='正在连接 Apple 本地语音助手…';try{const result=await chrome.runtime.sendMessage({type:'hf-test-native'});if(!result?.ok)throw new Error(result?.error||'连接失败');$('subtitleStatus').textContent=result.message;}catch(error){$('subtitleStatus').textContent=`连接失败：${error.message}。请运行下方安装程序。`;}finally{button.disabled=false;}});
 
 $('saveGlossary').addEventListener('click', async () => {
   await chrome.storage.local.set({glossary:$('glossary').value});

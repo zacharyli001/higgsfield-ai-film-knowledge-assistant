@@ -3,9 +3,31 @@ const DEFAULTS={
   provider:'openrouter',apiProtocol:'openai_chat',
   endpoint:'https://openrouter.ai/api/v1/chat/completions',model:'google/gemini-3.1-flash-lite',apiKey:'',
   audioTranscriptionEndpoint:'https://api.siliconflow.cn/v1/audio/transcriptions',audioTranscriptionModel:'FunAudioLLM/SenseVoiceSmall',
+  subtitleRecognizer:'apple',subtitleTranslator:'current',deeplEndpoint:'https://api-free.deepl.com/v2/translate',deeplApiKey:'',
   glossary:'Higgsfield = Higgsfield\nSeedance = Seedance\nSeedream = Seedream\nSoul Cinema = Soul Cinema\nCinema Studio = Cinema Studio',
   preservePromptKeywords:true
 };
+
+const NATIVE_HOST='ai.higgsfield.zh.speech';
+let nativePort=null,nativeSequence=0;
+const nativePending=new Map();
+function disconnectNative(error){
+  const reason=error||new Error(chrome.runtime.lastError?.message||'Apple 本地语音助手已断开');
+  for(const {reject} of nativePending.values())reject(reason);nativePending.clear();nativePort=null;
+}
+function connectNative(){
+  if(nativePort)return nativePort;
+  const port=chrome.runtime.connectNative(NATIVE_HOST);nativePort=port;
+  port.onMessage.addListener(message=>{const pending=nativePending.get(message?.id);if(!pending)return;nativePending.delete(message.id);message.ok?pending.resolve(message):pending.reject(new Error(message.error||'Apple 本地识别失败'));});
+  port.onDisconnect.addListener(()=>disconnectNative());return port;
+}
+function nativeRequest(payload,timeout=30000){
+  return new Promise((resolve,reject)=>{const id=++nativeSequence,port=connectNative(),timer=setTimeout(()=>{nativePending.delete(id);reject(new Error('Apple 本地识别超时'));},timeout);nativePending.set(id,{resolve:value=>{clearTimeout(timer);resolve(value);},reject:error=>{clearTimeout(timer);reject(error);}});try{port.postMessage({...payload,id});}catch(error){nativePending.delete(id);clearTimeout(timer);reject(error);}});
+}
+async function transcribeApple(dataUrl){
+  const match=String(dataUrl||'').match(/^data:([^,]*?);base64,([A-Za-z0-9+/=\s]+)$/);if(!match)throw new Error('音频数据无效');
+  const result=await nativeRequest({action:'transcribe',audio:match[2],locale:'en-US'},35000);const text=String(result.text||'').trim();if(!text)throw new Error('Apple 本地识别没有听到英文');return text;
+}
 
 async function openEngine(){
   const url=chrome.runtime.getURL('engine.html');
@@ -83,6 +105,17 @@ async function transcribeAudio(dataUrl,config){
   if(!response.ok)throw new Error(`语音转写 ${response.status}：${raw.slice(0,240)}`);
   const text=JSON.parse(raw)?.text?.trim();if(!text)throw new Error('语音转写没有返回文字');return text;
 }
+async function translateSubtitle(source,config){
+  if(config.subtitleTranslator!=='deepl'){
+    const terms=selectTerms(parseGlossary(config.glossary),source,30),system=['把英文影视课程口语翻译成简洁、自然的简体中文字幕。','只输出译文，不解释，不添加引号。','保留品牌、型号和人名。',terms.length?'固定术语：\n'+terms.map(([a,b])=>`${a} => ${b}`).join('\n'):''].filter(Boolean).join('\n');
+    const text=(await callModel(config,system,source,{json:false,maxTokens:512})).trim();if(!text)throw new Error('翻译接口没有返回字幕');return text;
+  }
+  const endpoint=validateEndpoint(config.deeplEndpoint||'https://api-free.deepl.com/v2/translate').toString(),key=String(config.deeplApiKey||'').trim();if(!key)throw new Error('请在设置中填写 DeepL API Key');
+  const body=new URLSearchParams({text:source,source_lang:'EN',target_lang:'ZH-HANS'});
+  const response=await fetch(endpoint,{method:'POST',headers:{Authorization:`DeepL-Auth-Key ${key}`,'Content-Type':'application/x-www-form-urlencoded'},body}),raw=await response.text();if(!response.ok)throw new Error(`DeepL ${response.status}：${raw.slice(0,240)}`);
+  const text=JSON.parse(raw)?.translations?.[0]?.text?.trim();if(!text)throw new Error('DeepL 没有返回译文');return text;
+}
+async function subtitleFromAudio(dataUrl,config){const source=config.subtitleRecognizer==='apple'?await transcribeApple(dataUrl):await transcribeAudio(dataUrl,config);return {source,text:await translateSubtitle(source,config)};}
 async function callModel(config,system,user,{json=true,maxTokens=8192}={}){
   const protocol=config.apiProtocol||'openai_chat';
   const rawEndpoint=protocol==='gemini'?String(config.endpoint).replace('{model}',encodeURIComponent(config.model)):config.endpoint;
@@ -214,7 +247,7 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   if(msg?.type==='hf-stop-tab-subtitles'){chrome.runtime.sendMessage({type:'hf-offscreen-stop',tabId:sender.tab?.id}).then(()=>reply({ok:true}),error=>reply({ok:false,error:error.message}));return true;}
   if(msg?.type==='hf-offscreen-audio-chunk'){
     if(typeof msg.dataUrl!=='string'||msg.dataUrl.length>12000000||!Number.isInteger(msg.tabId)){reply({ok:false,error:'字幕音频分段无效'});return;}
-    configWith().then(async config=>{const source=await transcribeAudio(msg.dataUrl,config);const [text]=await translate([source]);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text,source});return {ok:true};}).then(reply,error=>{chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-status',text:`字幕错误：${error.message}`}).catch(()=>{});reply({ok:false,error:error.message});});return true;
+    configWith().then(async config=>{const {source,text}=await subtitleFromAudio(msg.dataUrl,config);await chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-update',text,source});return {ok:true};}).then(reply,error=>{chrome.tabs.sendMessage(msg.tabId,{type:'hf-subtitle-status',text:`字幕错误：${error.message}`}).catch(()=>{});reply({ok:false,error:error.message});});return true;
   }
   if(msg?.type==='hf-open'){openEngine().then(()=>reply({ok:true}),e=>reply({ok:false,error:e.message}));return true;}
   if(msg?.type==='hf-ai-translate'||msg?.type==='hf-translate'){
@@ -223,8 +256,9 @@ chrome.runtime.onMessage.addListener((msg,sender,reply)=>{
   }
   if(msg?.type==='hf-transcribe-audio'){
     if(typeof msg.dataUrl!=='string'||msg.dataUrl.length>12000000){reply({ok:false,error:'音频分段无效或过大'});return;}
-    configWith().then(async config=>{const source=await transcribeAudio(msg.dataUrl,config);const [text]=await translate([source]);return {ok:true,source,text};}).then(reply,error=>reply({ok:false,error:error.message}));return true;
+    configWith().then(config=>subtitleFromAudio(msg.dataUrl,config).then(result=>({ok:true,...result}))).then(reply,error=>reply({ok:false,error:error.message}));return true;
   }
+  if(msg?.type==='hf-test-native'){nativeRequest({action:'ping'},5000).then(result=>reply({ok:true,message:result.message||'Apple 本地语音助手已连接'}),error=>reply({ok:false,error:error.message}));return true;}
   if(msg?.type==='hf-analyze-project'){
     try{
       const url=new URL(msg.pageData?.url||'');
