@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Higgsfield 中文助手",
+  "version": "1.0.0",
+  "description": "动态翻译 Higgsfield 界面与英文项目介绍；使用 Chrome 本地翻译。",
+  "minimum_chrome_version": "138",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://higgsfield.ai/*",
+    "https://*.higgsfield.ai/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "打开中文翻译控制台"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://higgsfield.ai/*",
+        "https://*.higgsfield.ai/*"
+      ],
+      "js": [
+        "dictionary.js",
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ]
+}
